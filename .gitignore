@@ -35,6 +35,3 @@ env/
 
 # Config files with local settings
 config_fixed.json
-
-# Test files
-test_dwarf.py

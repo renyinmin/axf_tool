@@ -1,4 +1,4 @@
-# J-Scop - Modbus AXF Debug Tool
+# AXF Tool - Modbus AXF Debug Tool
 
 一个用于解析 AXF/ELF 文件并通过 Modbus RTU 协议读取嵌入式设备内存变量的工具。
 

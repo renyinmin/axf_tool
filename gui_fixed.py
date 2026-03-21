@@ -32,41 +32,20 @@ def _import_modules():
         return True
     except ImportError as e:
         print(f"[DEBUG] 模块导入失败: {e}")
+        print("=" * 50)
+        print("错误: 缺少必要的依赖库!")
+        print("请执行以下命令安装依赖:")
+        print("  pip install -r requirements.txt")
+        print("=" * 50)
         MODULES_LOADED = False
         return False
 
-_import_modules()
-
-if not MODULES_LOADED:
-    class AXFParser:
-        def __init__(self, path):
-            self.symbols = {}
-        def get_variable_address(self, var):
-            return 0x20000000
-        def list_global_variables(self):
-            return {"TestVar": 0x20000000}
-
-    class ModbusMemoryClient:
-        def __init__(self, **kwargs):
-            pass
-        def connect(self):
-            return True
-        def disconnect(self):
-            pass
-
-    DisplayType = type('DisplayType', (), {
-        'HEX': 'hex',
-        'DECIMAL': 'decimal',
-        'FLOAT': 'float',
-        'INT32': 'int32',
-        'UINT32': 'uint32',
-        'INT16': 'int16',
-        'UINT16': 'uint16'
-    })
+# 不在导入时检查，延迟到 main() 函数中
+# _import_modules()
+# if not MODULES_LOADED:
+#     sys.exit(1)
 
 print(f"[DEBUG] 模块名称: {__name__}")
-print(f"[DEBUG] MODULES_LOADED: {MODULES_LOADED}")
-print(f"[DEBUG] AXFParser类型: {AXFParser}")
 
 class FixedModbusGUI:
     """修复版GUI，更简单稳定"""

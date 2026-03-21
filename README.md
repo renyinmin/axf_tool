@@ -18,9 +18,9 @@ pip install -r requirements.txt
 
 ## 使用方法
 
-1. 运行 GUI 程序：
+1. 运行程序：
 ```bash
-python gui_fixed.py
+python main.py
 ```
 
 2. 点击"浏览..."选择 AXF 文件（自动加载）
@@ -33,6 +33,19 @@ python gui_fixed.py
 4. 点击"获取地址"查看变量地址
 
 5. 连接 Modbus 设备后可读取变量值
+
+## 命令行模式
+
+```bash
+# 解析AXF文件并列出所有变量
+python main.py parse <axf文件> --list
+
+# 搜索特定变量
+python main.py parse <axf文件> --search g_single_invter
+
+# 读取内存
+python main.py read --port COM3 --address 0x20000000
+```
 
 ## 支持的变量路径格式
 

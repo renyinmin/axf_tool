@@ -36,27 +36,17 @@ class DisplayType(Enum):
 class ModbusMemoryClient:
     """Modbus内存读写客户端"""
 
-    # 寄存器地址定义
-    ADDR_WRITE_ADDR = 49999  # 写入要读取的内存地址
-    ADDR_READ_DATA = 50000   # 读取内存数据
+    ADDR_WRITE_ADDR = 43507
+    ADDR_READ_DATA = 43509
 
     def __init__(self, port: str = 'COM1', baudrate: int = 115200,
-                 timeout: float = 1.0, **kwargs):
-        """
-        初始化Modbus客户端
-
-        Args:
-            port: 串口端口，如 'COM1' 或 '/dev/ttyUSB0'
-            baudrate: 波特率，默认115200
-            timeout: 超时时间（秒）
-            **kwargs: 其他ModbusSerialClient参数
-        """
+                 timeout: float = 1.0, debug: bool = True, **kwargs):
         _ensure_pymodbus()
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
+        self.debug = debug
 
-        # 创建Modbus客户端
         self.client = ModbusSerialClient(
             port=port,
             baudrate=baudrate,
@@ -65,6 +55,57 @@ class ModbusMemoryClient:
         )
 
         self.connected = False
+
+    def _print_packet(self, direction: str, data: bytes, description: str = ""):
+        """打印报文"""
+        if not self.debug:
+            return
+        hex_str = ' '.join(f'{b:02X}' for b in data)
+        print(f"\n[{direction}] {description}")
+        print(f"  报文: {hex_str}")
+        print(f"  长度: {len(data)} 字节")
+
+    def _build_write_registers_request(self, address: int, values: list, slave_id: int = 1) -> bytes:
+        """构建写多个寄存器请求报文 (功能码16)"""
+        packet = bytearray()
+        packet.append(slave_id)
+        packet.append(0x10)
+        packet.append((address >> 8) & 0xFF)
+        packet.append(address & 0xFF)
+        packet.append((len(values) >> 8) & 0xFF)
+        packet.append(len(values) & 0xFF)
+        packet.append(len(values) * 2)
+        for val in values:
+            packet.append((val >> 8) & 0xFF)
+            packet.append(val & 0xFF)
+        crc = self._calculate_crc(packet)
+        packet.extend(crc)
+        return bytes(packet)
+
+    def _build_read_registers_request(self, address: int, count: int, slave_id: int = 1) -> bytes:
+        """构建读保持寄存器请求报文 (功能码03)"""
+        packet = bytearray()
+        packet.append(slave_id)
+        packet.append(0x03)
+        packet.append((address >> 8) & 0xFF)
+        packet.append(address & 0xFF)
+        packet.append((count >> 8) & 0xFF)
+        packet.append(count & 0xFF)
+        crc = self._calculate_crc(packet)
+        packet.extend(crc)
+        return bytes(packet)
+
+    def _calculate_crc(self, data: bytearray) -> bytes:
+        """计算Modbus RTU CRC16"""
+        crc = 0xFFFF
+        for byte in data:
+            crc ^= byte
+            for _ in range(8):
+                if crc & 0x0001:
+                    crc = (crc >> 1) ^ 0xA001
+                else:
+                    crc >>= 1
+        return bytes([crc & 0xFF, (crc >> 8) & 0xFF])
 
     def connect(self) -> bool:
         """连接到Modbus设备"""
@@ -83,27 +124,27 @@ class ModbusMemoryClient:
         self.connected = False
 
     def read_memory(self, address: int, display_type: DisplayType = DisplayType.UINT32) -> Optional[Union[int, float]]:
-        """
-        读取指定内存地址的数据
-
-        Args:
-            address: 内存地址（32位）
-            display_type: 数据显示类型
-
-        Returns:
-            读取到的数据，如果失败则返回None
-        """
         if not self.connected:
             if not self.connect():
                 return None
 
+        if isinstance(display_type, str):
+            display_type = DisplayType(display_type)
+
         try:
-            # 步骤1: 将内存地址写入ADDR_WRITE_ADDR寄存器
-            # 地址可能是32位，需要拆分为两个16位寄存器
             addr_high = (address >> 16) & 0xFFFF
             addr_low = address & 0xFFFF
 
-            # 写入地址高位和低位
+            print(f"\n{'='*60}")
+            print(f"读取内存地址: 0x{address:08X}")
+            print(f"显示类型: {display_type.value}")
+            print(f"{'='*60}")
+
+            write_req = self._build_write_registers_request(
+                self.ADDR_WRITE_ADDR, [addr_high, addr_low]
+            )
+            self._print_packet("发送", write_req, f"写寄存器 {self.ADDR_WRITE_ADDR} (设置内存地址)")
+
             write_result = self.client.write_registers(
                 self.ADDR_WRITE_ADDR,
                 [addr_high, addr_low]
@@ -113,29 +154,42 @@ class ModbusMemoryClient:
                 print(f"写入地址失败: {write_result}")
                 return None
 
-            # 短暂延迟，确保设备处理
+            write_resp = bytes([0x01, 0x10,
+                               (self.ADDR_WRITE_ADDR >> 8) & 0xFF, self.ADDR_WRITE_ADDR & 0xFF,
+                               0x00, 0x02])
+            crc = self._calculate_crc(bytearray(write_resp))
+            write_resp = write_resp + crc
+            self._print_packet("接收", write_resp, "写寄存器响应")
+
             time.sleep(0.01)
 
-            # 步骤2: 从ADDR_READ_DATA寄存器读取数据
-            # 读取2个寄存器（32位数据）
+            read_req = self._build_read_registers_request(self.ADDR_READ_DATA, 1)
+            self._print_packet("发送", read_req, f"读寄存器 {self.ADDR_READ_DATA} (读取内存数据)")
+
             read_result = self.client.read_holding_registers(
-                self.ADDR_READ_DATA,
-                2
+                address=self.ADDR_READ_DATA,
+                count=1
             )
 
             if isinstance(read_result, ExceptionResponse):
                 print(f"读取数据失败: {read_result}")
                 return None
 
-            # 提取数据
-            data_high = read_result.registers[0]
-            data_low = read_result.registers[1]
+            data_val = read_result.registers[0]
 
-            # 合并为32位整数
-            raw_value = (data_high << 16) | data_low
+            read_resp = bytes([0x01, 0x03, 0x02,
+                              (data_val >> 8) & 0xFF, data_val & 0xFF])
+            crc = self._calculate_crc(bytearray(read_resp))
+            read_resp = read_resp + crc
+            self._print_packet("接收", read_resp, f"读寄存器响应 (数据: 0x{data_val:04X})")
 
-            # 根据显示类型转换数据
-            return self._convert_value(raw_value, display_type)
+            raw_value = data_val
+            result = self._convert_value(raw_value, display_type)
+
+            print(f"\n结果: {result}")
+            print(f"原始值: 0x{raw_value:04X}")
+
+            return result
 
         except ModbusException as e:
             print(f"Modbus通信错误: {e}")
@@ -145,28 +199,30 @@ class ModbusMemoryClient:
             return None
 
     def write_memory(self, address: int, value: int, value_type: DisplayType = DisplayType.UINT32) -> bool:
-        """
-        向指定内存地址写入数据
-
-        Args:
-            address: 内存地址（32位）
-            value: 要写入的值
-            value_type: 值的数据类型
-
-        Returns:
-            成功返回True，失败返回False
-        """
         if not self.connected:
             if not self.connect():
                 return False
 
+        if isinstance(value_type, str):
+            value_type = DisplayType(value_type)
+
         try:
-            # 将值转换为原始32位整数
             raw_value = self._value_to_raw(value, value_type)
 
-            # 步骤1: 写入内存地址
+            print(f"\n{'='*60}")
+            print(f"写入内存地址: 0x{address:08X}")
+            print(f"写入值: {value} (原始: 0x{raw_value:08X})")
+            print(f"值类型: {value_type.value}")
+            print(f"{'='*60}")
+
             addr_high = (address >> 16) & 0xFFFF
             addr_low = address & 0xFFFF
+
+            write_addr_req = self._build_write_registers_request(
+                self.ADDR_WRITE_ADDR, [addr_high, addr_low]
+            )
+            self._print_packet("发送", write_addr_req, f"写寄存器 {self.ADDR_WRITE_ADDR} (设置内存地址)")
+
             write_addr_result = self.client.write_registers(
                 self.ADDR_WRITE_ADDR,
                 [addr_high, addr_low]
@@ -176,11 +232,23 @@ class ModbusMemoryClient:
                 print(f"写入地址失败: {write_addr_result}")
                 return False
 
+            write_addr_resp = bytes([0x01, 0x10,
+                                     (self.ADDR_WRITE_ADDR >> 8) & 0xFF, self.ADDR_WRITE_ADDR & 0xFF,
+                                     0x00, 0x02])
+            crc = self._calculate_crc(bytearray(write_addr_resp))
+            write_addr_resp = write_addr_resp + crc
+            self._print_packet("接收", write_addr_resp, "写寄存器响应")
+
             time.sleep(0.01)
 
-            # 步骤2: 写入数据到ADDR_READ_DATA（假设该寄存器也可写）
             data_high = (raw_value >> 16) & 0xFFFF
             data_low = raw_value & 0xFFFF
+
+            write_data_req = self._build_write_registers_request(
+                self.ADDR_READ_DATA, [data_high, data_low]
+            )
+            self._print_packet("发送", write_data_req, f"写寄存器 {self.ADDR_READ_DATA} (写入数据)")
+
             write_data_result = self.client.write_registers(
                 self.ADDR_READ_DATA,
                 [data_high, data_low]
@@ -190,6 +258,14 @@ class ModbusMemoryClient:
                 print(f"写入数据失败: {write_data_result}")
                 return False
 
+            write_data_resp = bytes([0x01, 0x10,
+                                     (self.ADDR_READ_DATA >> 8) & 0xFF, self.ADDR_READ_DATA & 0xFF,
+                                     0x00, 0x02])
+            crc = self._calculate_crc(bytearray(write_data_resp))
+            write_data_resp = write_data_resp + crc
+            self._print_packet("接收", write_data_resp, "写寄存器响应")
+
+            print(f"\n写入成功!")
             return True
 
         except ModbusException as e:
@@ -260,7 +336,7 @@ class ModbusMemoryClient:
 
         try:
             # 尝试读取保持寄存器（可能不支持）
-            result = self.client.read_holding_registers(0, 1)
+            result = self.client.read_holding_registers(address=0, count=1)
             return not isinstance(result, ExceptionResponse)
         except:
             return False

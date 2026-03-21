@@ -503,6 +503,11 @@ def main():
     """主函数"""
     print("启动修复版GUI...")
 
+    # 导入模块
+    if not _import_modules():
+        print("模块导入失败，无法启动GUI")
+        return 1
+
     try:
         root = tk.Tk()
         app = FixedModbusGUI(root)

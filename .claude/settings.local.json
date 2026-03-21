@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import pkg_resources; print\\([d for d in pkg_resources.working_set if ''elf'' in d.key]\\)\")",
+      "Bash(python -c \"import sys; print\\(''pkg_resources not available''\\)\")"
+    ]
+  }
+}

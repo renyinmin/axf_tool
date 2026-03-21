@@ -66,6 +66,7 @@ class FixedModbusGUI:
         # 状态变量
         self.axf_parser = None
         self.modbus_client = None
+        self._packets = []
 
         # 消息队列（简化）
         self.message_queue = queue.Queue()
@@ -109,51 +110,73 @@ class FixedModbusGUI:
 
     def _create_simple_widgets(self):
         """创建简化UI"""
-        # 主框架
         main_frame = ttk.Frame(self.root, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # 1. 文件选择区域
+        # 1. 串口设置区域（最上面）
+        conn_frame = ttk.LabelFrame(main_frame, text="串口设置", padding=10)
+        conn_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(conn_frame, text="串口:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        self.port_var = tk.StringVar(value=self.config.get("port", "COM3"))
+        port_combo = ttk.Combobox(conn_frame, textvariable=self.port_var, width=12)
+        port_combo.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W)
+
+        try:
+            import serial.tools.list_ports
+            ports = [port.device for port in serial.tools.list_ports.comports()]
+            if not ports:
+                ports = ["COM1", "COM2", "COM3", "COM4", "COM5", "COM6"]
+        except:
+            ports = ["COM1", "COM2", "COM3", "COM4", "COM5", "COM6"]
+        port_combo['values'] = ports
+
+        ttk.Label(conn_frame, text="波特率:").grid(row=0, column=2, sticky=tk.W, pady=5, padx=(15,0))
+        self.baudrate_var = tk.StringVar(value=str(self.config.get("baudrate", 115200)))
+        baud_combo = ttk.Combobox(conn_frame, textvariable=self.baudrate_var, width=10)
+        baud_combo.grid(row=0, column=3, padx=5, pady=5, sticky=tk.W)
+        baud_combo['values'] = ['9600', '19200', '38400', '57600', '115200', '230400']
+
+        self.connect_btn = ttk.Button(conn_frame, text="连接", command=self._toggle_connection)
+        self.connect_btn.grid(row=0, column=4, padx=15, pady=5)
+
+        self.conn_status = ttk.Label(conn_frame, text="未连接", foreground="red")
+        self.conn_status.grid(row=0, column=5, padx=5, pady=5)
+
+        # 2. 文件选择区域
         file_frame = ttk.LabelFrame(main_frame, text="AXF文件", padding=10)
         file_frame.pack(fill=tk.X, pady=(0, 10))
 
-        # 文件路径
         ttk.Label(file_frame, text="文件路径:").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.axf_file_var = tk.StringVar()
         axf_entry = ttk.Entry(file_frame, textvariable=self.axf_file_var, width=50)
         axf_entry.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W+tk.E)
 
-        # 浏览按钮（选择后自动加载）
         browse_btn = tk.Button(file_frame, text="浏览...", command=self._browse_file,
                                bg="#607D8B", fg="white", padx=20, pady=5)
         browse_btn.grid(row=0, column=2, padx=5, pady=5)
 
-        # 2. 变量操作区域
+        # 3. 变量操作区域
         var_frame = ttk.LabelFrame(main_frame, text="变量操作", padding=10)
         var_frame.pack(fill=tk.X, pady=(0, 10))
 
-        # 变量路径
         ttk.Label(var_frame, text="变量路径:").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.var_path_var = tk.StringVar()
         var_entry = ttk.Entry(var_frame, textvariable=self.var_path_var, width=40)
         var_entry.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W+tk.E)
 
-        # 历史下拉
         self.var_history_combo = ttk.Combobox(var_frame, width=40)
         self.var_history_combo.grid(row=1, column=1, padx=5, pady=5, sticky=tk.W+tk.E)
         self.var_history_combo['values'] = self.config.get("variable_history", [])
-        # 绑定选择事件
         self.var_history_combo.bind('<<ComboboxSelected>>', self._on_history_selected)
         ttk.Label(var_frame, text="历史:").grid(row=1, column=0, sticky=tk.W, pady=5)
 
-        # 显示类型
         ttk.Label(var_frame, text="显示类型:").grid(row=2, column=0, sticky=tk.W, pady=5)
         self.display_type_var = tk.StringVar(value="hex")
         type_combo = ttk.Combobox(var_frame, textvariable=self.display_type_var, width=15)
         type_combo.grid(row=2, column=1, padx=5, pady=5, sticky=tk.W)
         type_combo['values'] = ["hex", "decimal", "float", "int32", "uint32", "int16", "uint16"]
 
-        # 按钮行
         btn_frame = ttk.Frame(var_frame)
         btn_frame.grid(row=3, column=0, columnspan=2, pady=10)
 
@@ -168,51 +191,13 @@ class FixedModbusGUI:
         read_btn.pack(side=tk.LEFT, padx=5)
         read_btn.bind('<ButtonRelease-1>', lambda e: self._read_variable())
 
-        # 3. Modbus连接区域
-        conn_frame = ttk.LabelFrame(main_frame, text="Modbus连接", padding=10)
-        conn_frame.pack(fill=tk.X, pady=(0, 10))
-
-        # 串口选择
-        ttk.Label(conn_frame, text="串口:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        self.port_var = tk.StringVar(value=self.config.get("port", "COM3"))
-        port_combo = ttk.Combobox(conn_frame, textvariable=self.port_var, width=15)
-        port_combo.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W)
-
-        # 扫描串口
-        try:
-            import serial.tools.list_ports
-            ports = [port.device for port in serial.tools.list_ports.comports()]
-            if not ports:
-                ports = ["COM1", "COM2", "COM3", "COM4", "COM5", "COM6"]
-        except:
-            ports = ["COM1", "COM2", "COM3", "COM4", "COM5", "COM6"]
-
-        port_combo['values'] = ports
-
-        # 波特率
-        ttk.Label(conn_frame, text="波特率:").grid(row=0, column=2, sticky=tk.W, pady=5, padx=(20,0))
-        self.baudrate_var = tk.StringVar(value=str(self.config.get("baudrate", 115200)))
-        baud_combo = ttk.Combobox(conn_frame, textvariable=self.baudrate_var, width=10)
-        baud_combo.grid(row=0, column=3, padx=5, pady=5, sticky=tk.W)
-        baud_combo['values'] = ['9600', '19200', '38400', '57600', '115200', '230400']
-
-        # 连接按钮
-        self.connect_btn = ttk.Button(conn_frame, text="连接", command=self._toggle_connection)
-        self.connect_btn.grid(row=0, column=4, padx=20, pady=5)
-
-        # 连接状态
-        self.conn_status = ttk.Label(conn_frame, text="未连接", foreground="red")
-        self.conn_status.grid(row=0, column=5, padx=5, pady=5)
-
         # 4. 结果显示区域
         result_frame = ttk.LabelFrame(main_frame, text="结果", padding=10)
         result_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
-        # 结果文本框（带滚动条）
         self.result_text = scrolledtext.ScrolledText(result_frame, height=15)
         self.result_text.pack(fill=tk.BOTH, expand=True)
 
-        # 添加初始文本
         self.result_text.insert(tk.END, "结果将显示在这里...\n")
         self.result_text.insert(tk.END, "="*50 + "\n")
 
@@ -222,11 +207,8 @@ class FixedModbusGUI:
                               relief=tk.SUNKEN, anchor=tk.W)
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
-        # 配置列权重
         file_frame.columnconfigure(1, weight=1)
         var_frame.columnconfigure(1, weight=1)
-
-        # 绑定回车键到变量输入框
         var_entry.bind('<Return>', lambda e: self._get_address())
 
         print("简化UI创建完成")
@@ -402,6 +384,8 @@ class FixedModbusGUI:
 
         display_type = self.display_type_var.get()
 
+        self._packets = []
+
         def read_thread():
             try:
                 value = self.modbus_client.read_memory(address, display_type)
@@ -410,6 +394,10 @@ class FixedModbusGUI:
                     result += f"地址: 0x{address:08X}\n"
                     result += f"类型: {display_type}\n"
                     result += f"值: {value}\n"
+                    result += "-"*40 + "\n"
+                    result += "报文:\n"
+                    for pkt in self._packets:
+                        result += f"  [{pkt[0]}] {pkt[1]} ({pkt[2]}字节)\n"
                     result += "="*50 + "\n"
 
                     self._queue_update(lambda r=result: self._show_result(r))
@@ -423,6 +411,10 @@ class FixedModbusGUI:
 
         self._update_status(f"正在读取: {var_path}")
         threading.Thread(target=read_thread, daemon=True).start()
+
+    def _on_packet(self, direction, hex_str, length, description):
+        """报文回调"""
+        self._packets.append((direction, hex_str, length, description))
 
     def _show_result(self, result):
         """显示结果"""
@@ -452,7 +444,8 @@ class FixedModbusGUI:
                 self.modbus_client = ModbusMemoryClient(
                     port=port,
                     baudrate=baudrate,
-                    timeout=float(self.config.get("timeout", 1.0))
+                    timeout=float(self.config.get("timeout", 1.0)),
+                    packet_callback=self._on_packet
                 )
             except Exception as e:
                 messagebox.showerror("错误", f"创建客户端失败: {e}")

@@ -40,12 +40,13 @@ class ModbusMemoryClient:
     ADDR_READ_DATA = 43509
 
     def __init__(self, port: str = 'COM1', baudrate: int = 115200,
-                 timeout: float = 1.0, debug: bool = True, **kwargs):
+                 timeout: float = 1.0, debug: bool = True, packet_callback=None, **kwargs):
         _ensure_pymodbus()
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
         self.debug = debug
+        self.packet_callback = packet_callback
 
         self.client = ModbusSerialClient(
             port=port,
@@ -58,12 +59,13 @@ class ModbusMemoryClient:
 
     def _print_packet(self, direction: str, data: bytes, description: str = ""):
         """打印报文"""
-        if not self.debug:
-            return
         hex_str = ' '.join(f'{b:02X}' for b in data)
-        print(f"\n[{direction}] {description}")
-        print(f"  报文: {hex_str}")
-        print(f"  长度: {len(data)} 字节")
+        if self.debug:
+            print(f"\n[{direction}] {description}")
+            print(f"  报文: {hex_str}")
+            print(f"  长度: {len(data)} 字节")
+        if self.packet_callback:
+            self.packet_callback(direction, hex_str, len(data), description)
 
     def _build_write_registers_request(self, address: int, values: list, slave_id: int = 1) -> bytes:
         """构建写多个寄存器请求报文 (功能码16)"""

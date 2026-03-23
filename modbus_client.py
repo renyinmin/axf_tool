@@ -126,13 +126,18 @@ class ModbusMemoryClient:
             self.client.close()
         self.connected = False
 
-    def read_memory(self, address: int, display_type: DisplayType = DisplayType.UINT32) -> Optional[Union[int, float]]:
+    def read_memory(self, address: int, display_type: DisplayType = DisplayType.UINT32, 
+                  write_addr: int = None, read_addr: int = None) -> Optional[Union[int, float]]:
         if not self.connected:
             if not self.connect():
                 return None
 
         if isinstance(display_type, str):
             display_type = DisplayType(display_type)
+
+        # 使用指定的写地址和读地址，如果没有指定则使用默认值
+        write_addr = write_addr if write_addr is not None else self.ADDR_WRITE_ADDR
+        read_addr = read_addr if read_addr is not None else self.ADDR_READ_DATA
 
         try:
             addr_high = (address >> 16) & 0xFFFF
@@ -144,12 +149,12 @@ class ModbusMemoryClient:
             print(f"{'='*60}")
 
             write_req = self._build_write_registers_request(
-                self.ADDR_WRITE_ADDR, [addr_high, addr_low]
+                write_addr, [addr_high, addr_low]
             )
-            self._print_packet("发送", write_req, f"写寄存器 {self.ADDR_WRITE_ADDR} (设置内存地址)")
+            self._print_packet("发送", write_req, f"写寄存器 {write_addr} (设置内存地址)")
 
             write_result = self.client.write_registers(
-                self.ADDR_WRITE_ADDR,
+                write_addr,
                 [addr_high, addr_low]
             )
 
@@ -158,7 +163,7 @@ class ModbusMemoryClient:
                 return None
 
             write_resp = bytes([0x01, 0x10,
-                               (self.ADDR_WRITE_ADDR >> 8) & 0xFF, self.ADDR_WRITE_ADDR & 0xFF,
+                               (write_addr >> 8) & 0xFF, write_addr & 0xFF,
                                0x00, 0x02])
             crc = self._calculate_crc(bytearray(write_resp))
             write_resp = write_resp + crc
@@ -166,11 +171,11 @@ class ModbusMemoryClient:
 
             time.sleep(0.01)
 
-            read_req = self._build_read_registers_request(self.ADDR_READ_DATA, 2)
-            self._print_packet("发送", read_req, f"读寄存器 {self.ADDR_READ_DATA} (读取内存数据)")
+            read_req = self._build_read_registers_request(read_addr, 2)
+            self._print_packet("发送", read_req, f"读寄存器 {read_addr} (读取内存数据)")
 
             read_result = self.client.read_holding_registers(
-                address=self.ADDR_READ_DATA,
+                address=read_addr,
                 count=2
             )
 

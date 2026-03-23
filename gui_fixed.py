@@ -156,46 +156,64 @@ class FixedModbusGUI:
                                bg="#607D8B", fg="white", padx=20, pady=5)
         browse_btn.grid(row=0, column=2, padx=5, pady=5)
 
-        # 3. 变量操作区域
-        var_frame = ttk.LabelFrame(main_frame, text="变量操作", padding=10)
-        var_frame.pack(fill=tk.X, pady=(0, 10))
+        # 3. 批量读取区域（4组数据，每行一组）
+        batch_frame = ttk.LabelFrame(main_frame, text="批量读取（4组数据）", padding=10)
+        batch_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
-        ttk.Label(var_frame, text="变量路径:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        self.var_path_var = tk.StringVar()
-        var_entry = ttk.Entry(var_frame, textvariable=self.var_path_var, width=40)
-        var_entry.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W+tk.E)
+        # 4组数据，每行一组
+        self.batch_vars = [tk.StringVar() for _ in range(4)]
+        self.batch_types = [tk.StringVar(value="hex") for _ in range(4)]
+        self.batch_addresses = [tk.StringVar() for _ in range(4)]
+        self.batch_values = [tk.StringVar() for _ in range(4)]
+        self.batch_var_combos = []
 
-        self.var_history_combo = ttk.Combobox(var_frame, width=40)
-        self.var_history_combo.grid(row=1, column=1, padx=5, pady=5, sticky=tk.W+tk.E)
-        self.var_history_combo['values'] = self.config.get("variable_history", [])
-        self.var_history_combo.bind('<<ComboboxSelected>>', self._on_history_selected)
-        ttk.Label(var_frame, text="历史:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        # 表头
+        ttk.Label(batch_frame, text="变量").grid(row=0, column=0, padx=5, pady=5)
+        ttk.Label(batch_frame, text="地址").grid(row=0, column=1, padx=5, pady=5)
+        ttk.Label(batch_frame, text="值").grid(row=0, column=2, padx=5, pady=5)
+        ttk.Label(batch_frame, text="类型").grid(row=0, column=3, padx=5, pady=5)
 
-        ttk.Label(var_frame, text="显示类型:").grid(row=2, column=0, sticky=tk.W, pady=5)
-        self.display_type_var = tk.StringVar(value="hex")
-        type_combo = ttk.Combobox(var_frame, textvariable=self.display_type_var, width=15)
-        type_combo.grid(row=2, column=1, padx=5, pady=5, sticky=tk.W)
-        type_combo['values'] = ["hex", "float", "int32", "uint32", "int16", "uint16", "int8", "uint8"]
+        # 为每组创建控件（每行一组）
+        for i in range(4):
+            # 变量输入（Combobox，既能输入又能选择历史）
+            var_combo = ttk.Combobox(batch_frame, textvariable=self.batch_vars[i], width=40)
+            var_combo.grid(row=i+1, column=0, padx=2, pady=2)
+            var_combo['values'] = self.config.get("variable_history", [])
+            var_combo.bind('<<ComboboxSelected>>', lambda e, idx=i: self._on_batch_var_selected(e, idx))
+            self.batch_var_combos.append(var_combo)
+            
+            # 地址显示
+            addr_entry = ttk.Entry(batch_frame, textvariable=self.batch_addresses[i], width=15, state="readonly")
+            addr_entry.grid(row=i+1, column=1, padx=2, pady=2)
+            
+            # 值显示
+            val_entry = ttk.Entry(batch_frame, textvariable=self.batch_values[i], width=15, state="readonly")
+            val_entry.grid(row=i+1, column=2, padx=2, pady=2)
+            
+            # 类型选择
+            type_combo = ttk.Combobox(batch_frame, textvariable=self.batch_types[i], width=10)
+            type_combo.grid(row=i+1, column=3, padx=2, pady=2)
+            type_combo['values'] = ["hex", "float", "int32", "uint32", "int16", "uint16", "int8", "uint8"]
 
-        btn_frame = ttk.Frame(var_frame)
-        btn_frame.grid(row=3, column=0, columnspan=2, pady=10)
-
-        get_addr_btn = tk.Button(btn_frame, text="获取地址", 
-                                  bg="#4CAF50", fg="white", padx=10, pady=5)
-        get_addr_btn.pack(side=tk.LEFT, padx=5)
-        get_addr_btn.bind('<ButtonRelease-1>', lambda e: self._get_address())
-        print(f"[DEBUG] 获取地址按钮已创建")
+        # 批量操作按钮
+        batch_btn_frame = ttk.Frame(batch_frame)
+        batch_btn_frame.grid(row=5, column=0, columnspan=4, pady=10)
         
-        read_btn = tk.Button(btn_frame, text="读取",
-                             bg="#2196F3", fg="white", padx=10, pady=5)
-        read_btn.pack(side=tk.LEFT, padx=5)
-        read_btn.bind('<ButtonRelease-1>', lambda e: self._read_variable())
+        batch_read_btn = tk.Button(batch_btn_frame, text="批量读取",
+                                  bg="#9C27B0", fg="white", padx=15, pady=5)
+        batch_read_btn.pack(side=tk.LEFT, padx=5)
+        batch_read_btn.bind('<ButtonRelease-1>', lambda e: self._batch_read())
+
+        batch_clear_btn = tk.Button(batch_btn_frame, text="清空",
+                                  bg="#FF9800", fg="white", padx=15, pady=5)
+        batch_clear_btn.pack(side=tk.LEFT, padx=5)
+        batch_clear_btn.bind('<ButtonRelease-1>', lambda e: self._batch_clear())
 
         # 4. 结果显示区域
         result_frame = ttk.LabelFrame(main_frame, text="结果", padding=10)
         result_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
-        self.result_text = scrolledtext.ScrolledText(result_frame, height=15)
+        self.result_text = scrolledtext.ScrolledText(result_frame, height=10)
         self.result_text.pack(fill=tk.BOTH, expand=True)
 
         self.result_text.insert(tk.END, "结果将显示在这里...\n")
@@ -208,8 +226,6 @@ class FixedModbusGUI:
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
         file_frame.columnconfigure(1, weight=1)
-        var_frame.columnconfigure(1, weight=1)
-        var_entry.bind('<Return>', lambda e: self._get_address())
 
         print("简化UI创建完成")
 
@@ -310,65 +326,19 @@ class FixedModbusGUI:
             self.result_text.insert(tk.END, f"  ... 还有 {vars_count-3} 个变量\n")
         self.result_text.insert(tk.END, "="*50 + "\n")
 
-    def _get_address(self):
-        """获取变量地址"""
-        var_path = self.var_path_var.get().strip()
-        print(f"[DEBUG] _get_address called, var_path='{var_path}'")
-        
-        if not var_path:
-            self.result_text.insert(tk.END, "警告: 请输入变量路径\n")
-            self.result_text.see(tk.END)
-            self._update_status("请输入变量路径")
-            return
+    def _on_packet(self, direction, hex_str, length, description):
+        """报文回调"""
+        self._packets.append((direction, hex_str, length, description))
 
-        if not self.axf_parser:
-            self.result_text.insert(tk.END, "警告: 请先加载AXF文件\n")
-            self.result_text.see(tk.END)
-            self._update_status("请先加载AXF文件")
-            return
-
-        # 添加到历史
-        history = self.config.get("variable_history", [])
-        if var_path in history:
-            history.remove(var_path)
-        history.insert(0, var_path)
-        self.config["variable_history"] = history[:10]
-        self.var_history_combo['values'] = self.config["variable_history"]
-        self._save_config()
-
-        # 获取地址
-        print(f"[DEBUG] axf_parser type: {type(self.axf_parser)}")
-        print(f"[DEBUG] symbols count: {len(self.axf_parser.symbols)}")
-        address = self.axf_parser.get_variable_address(var_path)
-        print(f"[DEBUG] address result: {address}")
-        
-        if address is not None:
-            result = f"变量: {var_path}\n地址: 0x{address:08X}\n"
-            self.result_text.insert(tk.END, result)
-            self.result_text.insert(tk.END, "-"*40 + "\n")
-            self.result_text.see(tk.END)
-            self._update_status(f"找到地址: 0x{address:08X}")
-        else:
-            self.result_text.insert(tk.END, f"错误: 未找到变量 '{var_path}'\n")
-            self.result_text.insert(tk.END, f"提示: 检查变量名是否正确\n")
-            self.result_text.see(tk.END)
-            self._update_status(f"未找到变量: {var_path}")
-
-    def _on_history_selected(self, event):
-        """历史下拉框选择事件"""
-        selected = self.var_history_combo.get()
+    def _on_batch_var_selected(self, event, idx):
+        """批量变量下拉框选择事件"""
+        selected = self.batch_var_combos[idx].get()
         if selected:
-            self.var_path_var.set(selected)
-            # 自动获取地址
-            self._get_address()
+            # 变量已经通过textvariable自动更新到batch_vars[idx]
+            pass
 
-    def _read_variable(self):
-        """读取变量"""
-        var_path = self.var_path_var.get().strip()
-        if not var_path:
-            messagebox.showwarning("警告", "请输入变量路径")
-            return
-
+    def _batch_read(self):
+        """批量读取"""
         if not self.axf_parser:
             messagebox.showwarning("警告", "请先加载AXF文件")
             return
@@ -377,44 +347,88 @@ class FixedModbusGUI:
             messagebox.showwarning("警告", "请先连接Modbus设备")
             return
 
-        address = self.axf_parser.get_variable_address(var_path)
-        if address is None:
-            messagebox.showerror("错误", f"未找到变量: {var_path}")
-            return
-
-        display_type = self.display_type_var.get()
-
         self._packets = []
 
-        def read_thread():
-            try:
-                value = self.modbus_client.read_memory(address, display_type)
-                if value is not None:
-                    result = f"变量: {var_path}\n"
-                    result += f"地址: 0x{address:08X}\n"
-                    result += f"类型: {display_type}\n"
-                    result += f"值: {value}\n"
-                    result += "-"*40 + "\n"
-                    result += "报文:\n"
-                    for pkt in self._packets:
-                        result += f"  [{pkt[0]}] {pkt[1]} ({pkt[2]}字节)\n"
-                    result += "="*50 + "\n"
+        # 每组的写地址和读地址
+        group_addresses = [
+            {"write": 43507, "read": 43509},  # 第1组
+            {"write": 43511, "read": 43513},  # 第2组
+            {"write": 43515, "read": 43517},  # 第3组
+            {"write": 43519, "read": 43521}   # 第4组
+        ]
 
-                    self._queue_update(lambda r=result: self._show_result(r))
-                    self._queue_update(self._update_status, f"读取成功: {value}")
+        def batch_read_thread():
+            # 先获取所有地址
+            addresses = []
+            for i in range(4):
+                var_path = self.batch_vars[i].get().strip()
+                if not var_path:
+                    # 未选择变量，地址设为0
+                    addresses.append(0)
+                    self._queue_update(self.batch_addresses[i].set, "0x00000000")
                 else:
-                    self._queue_update(self._update_status, "读取失败")
-                    self._queue_update(lambda: messagebox.showerror("错误", "读取失败"))
-            except Exception as e:
-                self._queue_update(self._update_status, f"读取错误: {e}")
-                self._queue_update(lambda: messagebox.showerror("错误", f"读取错误: {e}"))
+                    address = self.axf_parser.get_variable_address(var_path)
+                    if address is not None:
+                        addresses.append(address)
+                        self._queue_update(self.batch_addresses[i].set, f"0x{address:08X}")
+                        # 添加到历史记录
+                        self._queue_update(self._add_to_history, var_path)
+                    else:
+                        # 未找到变量，地址设为0
+                        addresses.append(0)
+                        self._queue_update(self.batch_addresses[i].set, "0x00000000")
 
-        self._update_status(f"正在读取: {var_path}")
-        threading.Thread(target=read_thread, daemon=True).start()
+            # 读取数据
+            for i in range(4):
+                var_path = self.batch_vars[i].get().strip()
+                if not var_path:
+                    continue
 
-    def _on_packet(self, direction, hex_str, length, description):
-        """报文回调"""
-        self._packets.append((direction, hex_str, length, description))
+                address = addresses[i]
+                if address == 0:
+                    self._queue_update(self._update_batch_value, i, "未找到变量")
+                    continue
+
+                display_type = self.batch_types[i].get()
+                write_addr = group_addresses[i]["write"]
+                read_addr = group_addresses[i]["read"]
+                try:
+                    value = self.modbus_client.read_memory(address, display_type, write_addr, read_addr)
+                    if value is not None:
+                        self._queue_update(self._update_batch_value, i, value)
+                        self._queue_update(self._update_status, f"组{i+1}读取成功: {value}")
+                except Exception as e:
+                    self._queue_update(self._update_batch_value, i, f"错误: {str(e)}")
+                    self._queue_update(self._update_status, f"组{i+1}读取错误: {e}")
+
+        self._update_status("正在批量读取...")
+        threading.Thread(target=batch_read_thread, daemon=True).start()
+
+    def _update_batch_value(self, idx, value):
+        """更新批量读取的值"""
+        self.batch_values[idx].set(str(value))
+
+    def _add_to_history(self, var_path):
+        """添加变量到历史记录"""
+        history = self.config.get("variable_history", [])
+        if var_path in history:
+            history.remove(var_path)
+        history.insert(0, var_path)
+        self.config["variable_history"] = history[:10]
+        for combo in self.batch_var_combos:
+            combo['values'] = self.config["variable_history"]
+        self._save_config()
+
+    def _batch_clear(self):
+        """清空批量读取区域"""
+        for i in range(4):
+            self.batch_vars[i].set("")
+            self.batch_addresses[i].set("")
+            self.batch_values[i].set("")
+            if i < len(self.batch_var_combos):
+                self.batch_var_combos[i].set("")
+        
+        self._update_status("已清空")
 
     def _show_result(self, result):
         """显示结果"""

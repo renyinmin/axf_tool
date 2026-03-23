@@ -165,6 +165,7 @@ class FixedModbusGUI:
         self.batch_types = [tk.StringVar(value="hex") for _ in range(4)]
         self.batch_addresses = [tk.StringVar() for _ in range(4)]
         self.batch_values = [tk.StringVar() for _ in range(4)]
+        self.batch_raw_values = [None for _ in range(4)]  # 保存原始数据用于类型转换
         self.batch_var_combos = []
 
         # 表头
@@ -175,8 +176,8 @@ class FixedModbusGUI:
 
         # 为每组创建控件（每行一组）
         for i in range(4):
-            # 变量输入（Combobox，既能输入又能选择历史）
-            var_combo = ttk.Combobox(batch_frame, textvariable=self.batch_vars[i], width=40)
+            # 变量输入（Combobox，只能选择历史）
+            var_combo = ttk.Combobox(batch_frame, textvariable=self.batch_vars[i], width=40, state="readonly")
             var_combo.grid(row=i+1, column=0, padx=2, pady=2)
             var_combo['values'] = self.config.get("variable_history", [])
             var_combo.bind('<<ComboboxSelected>>', lambda e, idx=i: self._on_batch_var_selected(e, idx))
@@ -194,6 +195,7 @@ class FixedModbusGUI:
             type_combo = ttk.Combobox(batch_frame, textvariable=self.batch_types[i], width=10)
             type_combo.grid(row=i+1, column=3, padx=2, pady=2)
             type_combo['values'] = ["hex", "float", "int32", "uint32", "int16", "uint16", "int8", "uint8"]
+            type_combo.bind('<<ComboboxSelected>>', lambda e, idx=i: self._on_type_selected(e, idx))
 
         # 批量操作按钮
         batch_btn_frame = ttk.Frame(batch_frame)
@@ -333,9 +335,14 @@ class FixedModbusGUI:
     def _on_batch_var_selected(self, event, idx):
         """批量变量下拉框选择事件"""
         selected = self.batch_var_combos[idx].get()
-        if selected:
-            # 变量已经通过textvariable自动更新到batch_vars[idx]
-            pass
+        
+        if selected and self.axf_parser:
+            # 解析地址
+            address = self.axf_parser.get_variable_address(selected)
+            if address is not None:
+                self.batch_addresses[idx].set(f"0x{address:08X}")
+            else:
+                self.batch_addresses[idx].set("0x00000000")
 
     def _batch_read(self):
         """批量读取"""
@@ -393,9 +400,10 @@ class FixedModbusGUI:
                 write_addr = group_addresses[i]["write"]
                 read_addr = group_addresses[i]["read"]
                 try:
-                    value = self.modbus_client.read_memory(address, display_type, write_addr, read_addr)
-                    if value is not None:
-                        self._queue_update(self._update_batch_value, i, value)
+                    result = self.modbus_client.read_memory(address, display_type, write_addr, read_addr, return_raw=True)
+                    if result is not None:
+                        value, raw_value = result
+                        self._queue_update(self._update_batch_value_with_raw, i, value, raw_value)
                         self._queue_update(self._update_status, f"组{i+1}读取成功: {value}")
                 except Exception as e:
                     self._queue_update(self._update_batch_value, i, f"错误: {str(e)}")
@@ -407,6 +415,52 @@ class FixedModbusGUI:
     def _update_batch_value(self, idx, value):
         """更新批量读取的值"""
         self.batch_values[idx].set(str(value))
+
+    def _update_batch_value_with_raw(self, idx, value, raw_value):
+        """更新批量读取的值并保存原始数据"""
+        self.batch_values[idx].set(str(value))
+        self.batch_raw_values[idx] = raw_value
+
+    def _on_type_selected(self, event, idx):
+        """类型下拉框选择事件"""
+        raw_value = self.batch_raw_values[idx]
+        if raw_value is None:
+            return
+        
+        new_type = self.batch_types[idx].get()
+        converted_value = self._convert_raw_value(raw_value, new_type)
+        self.batch_values[idx].set(str(converted_value))
+
+    def _convert_raw_value(self, raw_value, display_type):
+        """将原始32位值转换为指定类型"""
+        import struct
+        
+        if display_type == "hex":
+            return raw_value
+        elif display_type == "float":
+            return struct.unpack('f', struct.pack('I', raw_value))[0]
+        elif display_type == "int32":
+            if raw_value >= 0x80000000:
+                return raw_value - 0x100000000
+            return raw_value
+        elif display_type == "uint32":
+            return raw_value
+        elif display_type == "int16":
+            low16 = raw_value & 0xFFFF
+            if low16 >= 0x8000:
+                return low16 - 0x10000
+            return low16
+        elif display_type == "uint16":
+            return raw_value & 0xFFFF
+        elif display_type == "int8":
+            low8 = raw_value & 0xFF
+            if low8 >= 0x80:
+                return low8 - 0x100
+            return low8
+        elif display_type == "uint8":
+            return raw_value & 0xFF
+        else:
+            return raw_value
 
     def _add_to_history(self, var_path):
         """添加变量到历史记录"""
@@ -425,6 +479,7 @@ class FixedModbusGUI:
             self.batch_vars[i].set("")
             self.batch_addresses[i].set("")
             self.batch_values[i].set("")
+            self.batch_raw_values[i] = None
             if i < len(self.batch_var_combos):
                 self.batch_var_combos[i].set("")
         

@@ -127,7 +127,7 @@ class ModbusMemoryClient:
         self.connected = False
 
     def read_memory(self, address: int, display_type: DisplayType = DisplayType.UINT32, 
-                  write_addr: int = None, read_addr: int = None) -> Optional[Union[int, float]]:
+                  write_addr: int = None, read_addr: int = None, return_raw: bool = False) -> Optional[Union[int, float, tuple]]:
         if not self.connected:
             if not self.connect():
                 return None
@@ -205,6 +205,8 @@ class ModbusMemoryClient:
             print(f"\n结果: {result}")
             print(f"原始值: 0x{raw_value:08X}")
 
+            if return_raw:
+                return (result, raw_value)
             return result
 
         except ModbusException as e:

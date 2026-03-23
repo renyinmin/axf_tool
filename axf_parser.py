@@ -69,10 +69,7 @@ class AXFParser:
     def _resolve_dwarf_path(self, base_name, members, addr):
         var_die, var_cu = self._find_variable_die(base_name)
         if not var_die:
-            print(f"[DEBUG] 未找到变量: {base_name}")
             return addr
-
-        print(f"[DEBUG] 找到变量 {base_name}, 基地址: 0x{addr:08X}")
 
         current_die = var_die
         current_cu = var_cu
@@ -83,32 +80,25 @@ class AXFParser:
                 index = int(array_match.group(1))
                 type_die, type_cu = self._get_type_die(current_die, current_cu)
                 if not type_die:
-                    print(f"[DEBUG] 无法获取数组类型，停止解析")
                     return addr
                 
                 element_size = self._get_array_element_size(type_die, type_cu)
                 offset = index * element_size
                 addr += offset
-                print(f"[DEBUG] 数组索引 [{index}], 元素大小: {element_size}, 偏移: {offset} (0x{offset:X}), 新地址: 0x{addr:08X}")
                 
                 current_die = type_die
                 current_cu = type_cu
             else:
                 type_die, type_cu = self._get_type_die(current_die, current_cu)
                 if not type_die:
-                    print(f"[DEBUG] 无法获取类型，停止解析")
                     return addr
-
-                print(f"[DEBUG] 类型: {type_die.tag}")
 
                 member_die = self._find_member_in_type(type_die, member_name)
                 if not member_die:
-                    print(f"[DEBUG] 未找到成员: {member_name}")
                     return addr
 
                 offset = self._get_member_offset(member_die)
                 addr += offset
-                print(f"[DEBUG] 成员 '{member_name}' 偏移: {offset} (0x{offset:X}), 新地址: 0x{addr:08X}")
 
                 current_die = member_die
                 current_cu = type_cu
@@ -153,13 +143,18 @@ class AXFParser:
 
         if form == 'DW_FORM_ref_addr':
             search_offset = type_offset
-        else:
+        elif cu:
             search_offset = cu.cu_offset + type_offset
+        else:
+            search_offset = type_offset
+
+        print(f"[DEBUG] _get_type_die: search_offset={search_offset}, cu_offset={cu.cu_offset if cu else 'None'}")
 
         for cu_iter in self.dwarf_info.iter_CUs():
             try:
                 type_die = cu_iter.get_DIE_from_refaddr(search_offset)
                 if type_die:
+                    print(f"[DEBUG] _get_type_die: 找到类型 DIE, tag={type_die.tag}")
                     while type_die and type_die.tag in ('DW_TAG_typedef', 'DW_TAG_const_type', 'DW_TAG_volatile_type', 'DW_TAG_pointer_type'):
                         if 'DW_AT_type' not in type_die.attributes:
                             return type_die, cu_iter
@@ -178,9 +173,11 @@ class AXFParser:
                             break
                     
                     return type_die, cu_iter
-            except:
+            except Exception as e:
+                print(f"[DEBUG] _get_type_die: CU 查找异常: {e}")
                 continue
 
+        print(f"[DEBUG] _get_type_die: 未找到类型 DIE")
         return None, None
 
     def _find_member_in_type(self, type_die, member_name):
@@ -232,3 +229,46 @@ class AXFParser:
 
     def list_global_variables(self):
         return self.symbols
+
+    def infer_variable_type(self, variable_path: str):
+        """根据变量名推断数据类型"""
+        var_name = variable_path.split('.')[-1].lower()
+        
+        # 根据变量名模式推断类型
+        type_patterns = {
+            'voltage': 'uint16',
+            'current': 'int16',
+            'temperature': 'int16',
+            'soc': 'uint8',
+            'capacity': 'uint16',
+            'cycle': 'uint16',
+            'status': 'uint8',
+            'state': 'uint8',
+            'flag': 'uint8',
+            'enable': 'uint8',
+            'disable': 'uint8',
+            'mode': 'uint8',
+            'count': 'uint16',
+            'index': 'uint16',
+            'id': 'uint16',
+            'year': 'uint16',
+            'month': 'uint8',
+            'day': 'uint8',
+            'hour': 'uint8',
+            'minute': 'uint8',
+            'second': 'uint8',
+            'value': 'int16',
+            'data': 'uint16',
+            'param': 'uint16',
+            'offset': 'uint16',
+            'size': 'uint16',
+            'length': 'uint16',
+            'time': 'uint32',
+            'timestamp': 'uint32',
+        }
+        
+        for pattern, type_name in type_patterns.items():
+            if pattern in var_name:
+                return type_name
+        
+        return 'hex'  # 默认返回hex

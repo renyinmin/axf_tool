@@ -176,8 +176,8 @@ class FixedModbusGUI:
 
         # 为每组创建控件（每行一组）
         for i in range(4):
-            # 变量输入（Combobox，只能选择历史）
-            var_combo = ttk.Combobox(batch_frame, textvariable=self.batch_vars[i], width=40, state="readonly")
+            # 变量输入（Combobox，支持输入和选择历史）
+            var_combo = ttk.Combobox(batch_frame, textvariable=self.batch_vars[i], width=40, state="normal")
             var_combo.grid(row=i+1, column=0, padx=2, pady=2)
             var_combo['values'] = self.config.get("variable_history", [])
             var_combo.bind('<<ComboboxSelected>>', lambda e, idx=i: self._on_batch_var_selected(e, idx))

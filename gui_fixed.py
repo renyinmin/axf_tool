@@ -175,7 +175,7 @@ class FixedModbusGUI:
         self.display_type_var = tk.StringVar(value="hex")
         type_combo = ttk.Combobox(var_frame, textvariable=self.display_type_var, width=15)
         type_combo.grid(row=2, column=1, padx=5, pady=5, sticky=tk.W)
-        type_combo['values'] = ["hex", "float", "int32", "uint32", "int16", "uint16"]
+        type_combo['values'] = ["hex", "float", "int32", "uint32", "int16", "uint16", "int8", "uint8"]
 
         btn_frame = ttk.Frame(var_frame)
         btn_frame.grid(row=3, column=0, columnspan=2, pady=10)

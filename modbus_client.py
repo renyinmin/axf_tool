@@ -31,6 +31,8 @@ class DisplayType(Enum):
     UINT32 = "uint32"    # 无符号32位整数
     INT16 = "int16"       # 有符号16位整数
     UINT16 = "uint16"    # 无符号16位整数
+    INT8 = "int8"        # 有符号8位整数
+    UINT8 = "uint8"      # 无符号8位整数
 
 class ModbusMemoryClient:
     """Modbus内存读写客户端"""
@@ -187,7 +189,9 @@ class ModbusMemoryClient:
             self._print_packet("接收", read_resp, f"读寄存器响应 (数据: 0x{data_high:04X} 0x{data_low:04X})")
 
             if display_type in [DisplayType.INT16, DisplayType.UINT16]:
-                raw_value = data_high
+                raw_value = data_low
+            elif display_type in [DisplayType.INT8, DisplayType.UINT8]:
+                raw_value = data_low & 0xFF
             else:
                 raw_value = (data_high << 16) | data_low
 
@@ -301,6 +305,13 @@ class ModbusMemoryClient:
             return low16
         elif display_type == DisplayType.UINT16:
             return raw_value & 0xFFFF
+        elif display_type == DisplayType.INT8:
+            low8 = raw_value & 0xFF
+            if low8 >= 0x80:
+                return low8 - 0x100
+            return low8
+        elif display_type == DisplayType.UINT8:
+            return raw_value & 0xFF
         else:
             return raw_value
 

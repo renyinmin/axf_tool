@@ -110,6 +110,8 @@ python main.py read --port COM3 --address 0x20000000
 | uint32 | 无符号32位整数 |
 | int16 | 有符号16位整数 |
 | uint16 | 无符号16位整数 |
+| int8 | 有符号8位整数 |
+| uint8 | 无符号8位整数 |
 
 ## 技术实现
 

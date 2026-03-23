@@ -26,7 +26,6 @@ def _ensure_pymodbus():
 class DisplayType(Enum):
     """数据显示类型"""
     HEX = "hex"           # 十六进制
-    DECIMAL = "decimal"   # 十进制
     FLOAT = "float"       # 单精度浮点数
     INT32 = "int32"       # 有符号32位整数
     UINT32 = "uint32"    # 无符号32位整数
@@ -165,31 +164,37 @@ class ModbusMemoryClient:
 
             time.sleep(0.01)
 
-            read_req = self._build_read_registers_request(self.ADDR_READ_DATA, 1)
+            read_req = self._build_read_registers_request(self.ADDR_READ_DATA, 2)
             self._print_packet("发送", read_req, f"读寄存器 {self.ADDR_READ_DATA} (读取内存数据)")
 
             read_result = self.client.read_holding_registers(
                 address=self.ADDR_READ_DATA,
-                count=1
+                count=2
             )
 
             if isinstance(read_result, ExceptionResponse):
                 print(f"读取数据失败: {read_result}")
                 return None
 
-            data_val = read_result.registers[0]
+            data_high = read_result.registers[0]
+            data_low = read_result.registers[1]
 
-            read_resp = bytes([0x01, 0x03, 0x02,
-                              (data_val >> 8) & 0xFF, data_val & 0xFF])
+            read_resp = bytes([0x01, 0x03, 0x04,
+                              (data_high >> 8) & 0xFF, data_high & 0xFF,
+                              (data_low >> 8) & 0xFF, data_low & 0xFF])
             crc = self._calculate_crc(bytearray(read_resp))
             read_resp = read_resp + crc
-            self._print_packet("接收", read_resp, f"读寄存器响应 (数据: 0x{data_val:04X})")
+            self._print_packet("接收", read_resp, f"读寄存器响应 (数据: 0x{data_high:04X} 0x{data_low:04X})")
 
-            raw_value = data_val
+            if display_type in [DisplayType.INT16, DisplayType.UINT16]:
+                raw_value = data_high
+            else:
+                raw_value = (data_high << 16) | data_low
+
             result = self._convert_value(raw_value, display_type)
 
             print(f"\n结果: {result}")
-            print(f"原始值: 0x{raw_value:04X}")
+            print(f"原始值: 0x{raw_value:08X}")
 
             return result
 
@@ -281,20 +286,15 @@ class ModbusMemoryClient:
         """将原始32位值转换为指定类型"""
         if display_type == DisplayType.HEX:
             return raw_value
-        elif display_type == DisplayType.DECIMAL:
-            return raw_value
         elif display_type == DisplayType.FLOAT:
-            # 将32位整数解释为IEEE 754单精度浮点数
             return struct.unpack('f', struct.pack('I', raw_value))[0]
         elif display_type == DisplayType.INT32:
-            # 有符号32位整数
             if raw_value >= 0x80000000:
                 return raw_value - 0x100000000
             return raw_value
         elif display_type == DisplayType.UINT32:
             return raw_value
         elif display_type == DisplayType.INT16:
-            # 取低16位作为有符号整数
             low16 = raw_value & 0xFFFF
             if low16 >= 0x8000:
                 return low16 - 0x10000

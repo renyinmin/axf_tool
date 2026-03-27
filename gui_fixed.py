@@ -55,7 +55,7 @@ class FixedModbusGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Modbus AXF工具 - 修复版")
-        self.root.geometry("800x600")
+        self.root.geometry("800x700")
 
         # 设置最小大小
         self.root.minsize(600, 400)
@@ -83,7 +83,11 @@ class FixedModbusGUI:
 
     def _load_config(self):
         """加载配置"""
-        config_path = os.path.join(os.path.dirname(__file__), self.CONFIG_FILE)
+        if getattr(sys, 'frozen', False):
+            exe_dir = os.path.dirname(sys.executable)
+        else:
+            exe_dir = os.path.dirname(__file__)
+        config_path = os.path.join(exe_dir, self.CONFIG_FILE)
         if os.path.exists(config_path):
             try:
                 with open(config_path, 'r', encoding='utf-8') as f:
@@ -94,14 +98,23 @@ class FixedModbusGUI:
         return {
             "recent_axf_files": [],
             "port": "COM3",
-            "baudrate": 115200,
+            "baudrate": 9600,
             "timeout": 1.0,
-            "variable_history": []
+            "variable_history": [],
+            "comm_type": "serial",
+            "server": "测试服",
+            "ws_url": "wss://test.maitian-yun.com/hub/v0/websocket/console",
+            "ws_token": "admeyJpZCI6Ijk5ZDIzZWM1LWJiNjUtNDEyNi05NzZlLWI0NzVjN2JlZDE5OCIsInNlY3JldCI6IjllNTI5ZmU0OGRlNWViNzgyODAzNGEyNGRhYmU5M2E1NTU4YzU2YTlmZjRjOGUxNzAzYThiYzM3MDE5ODMxNmYiLCJwYXlsb2FkIjoiYVJxS1RFU1FJV29iZFFmRFlMZjk0ZWRXLzhoako1TjE5dHFiMHhjMUV3YzR0dmljNzBRajhTTVB4SFAwZlpFY1VIamQ4VlRxVkhHYmFXSEtNY3lMVmY1bnF3VFViMS96eUZ1QnZ1NmsyYk9yei9iaWU1YTU1am9qcVgwbnRSL2pGK1hsRndLSWNQSlJ5OTErS2tQZ2E2amxvT3ZmNU13bjIxazRudDc5N3k2WnlPY3ZONHYrZzducnM3Mmg0WmlBeEIxTjJUcE5pUmdXYVViNTRZdXpINU9DQUlpQXNiL0w5TFoxVWFXQXRacXpmSmZtMW5OOVYwVlJnOGxqdmF0aSJ9",
+            "ws_sn": "60HPB02054CA999"
         }
 
     def _save_config(self):
         """保存配置"""
-        config_path = os.path.join(os.path.dirname(__file__), self.CONFIG_FILE)
+        if getattr(sys, 'frozen', False):
+            exe_dir = os.path.dirname(sys.executable)
+        else:
+            exe_dir = os.path.dirname(__file__)
+        config_path = os.path.join(exe_dir, self.CONFIG_FILE)
         try:
             with open(config_path, 'w', encoding='utf-8') as f:
                 json.dump(self.config, f, indent=2, ensure_ascii=False)
@@ -113,13 +126,25 @@ class FixedModbusGUI:
         main_frame = ttk.Frame(self.root, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # 1. 串口设置区域（最上面）
-        conn_frame = ttk.LabelFrame(main_frame, text="串口设置", padding=10)
+        # 1. 通信设置区域（最上面）
+        conn_frame = ttk.LabelFrame(main_frame, text="通信设置", padding=10)
         conn_frame.pack(fill=tk.X, pady=(0, 10))
 
-        ttk.Label(conn_frame, text="串口:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        # 通信方式选择
+        ttk.Label(conn_frame, text="通信方式:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        self.comm_type_var = tk.StringVar(value=self.config.get("comm_type", "serial"))
+        comm_combo = ttk.Combobox(conn_frame, textvariable=self.comm_type_var, width=12)
+        comm_combo.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W)
+        comm_combo['values'] = ['serial', 'websocket']
+        comm_combo.bind('<<ComboboxSelected>>', self._on_comm_type_changed)
+
+        # 串口设置
+        self.serial_frame = ttk.Frame(conn_frame)
+        self.serial_frame.grid(row=1, column=0, columnspan=6, sticky=tk.W+tk.E, pady=5)
+
+        ttk.Label(self.serial_frame, text="串口:").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.port_var = tk.StringVar(value=self.config.get("port", "COM3"))
-        port_combo = ttk.Combobox(conn_frame, textvariable=self.port_var, width=12)
+        port_combo = ttk.Combobox(self.serial_frame, textvariable=self.port_var, width=12)
         port_combo.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W)
 
         try:
@@ -131,30 +156,51 @@ class FixedModbusGUI:
             ports = ["COM1", "COM2", "COM3", "COM4", "COM5", "COM6"]
         port_combo['values'] = ports
 
-        ttk.Label(conn_frame, text="波特率:").grid(row=0, column=2, sticky=tk.W, pady=5, padx=(15,0))
-        self.baudrate_var = tk.StringVar(value=str(self.config.get("baudrate", 115200)))
-        baud_combo = ttk.Combobox(conn_frame, textvariable=self.baudrate_var, width=10)
+        ttk.Label(self.serial_frame, text="波特率:").grid(row=0, column=2, sticky=tk.W, pady=5, padx=(15,0))
+        self.baudrate_var = tk.StringVar(value=str(self.config.get("baudrate", 9600)))
+        baud_combo = ttk.Combobox(self.serial_frame, textvariable=self.baudrate_var, width=10)
         baud_combo.grid(row=0, column=3, padx=5, pady=5, sticky=tk.W)
         baud_combo['values'] = ['9600', '19200', '38400', '57600', '115200', '230400']
 
+        # WebSocket设置
+        self.ws_frame = ttk.Frame(conn_frame)
+
+        # 第一行：服务器选择和SN
+        ttk.Label(self.ws_frame, text="服务器:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        self.server_var = tk.StringVar(value=self.config.get("server", "测试服"))
+        server_combo = ttk.Combobox(self.ws_frame, textvariable=self.server_var, width=12)
+        server_combo.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W)
+        server_combo['values'] = ['测试服', '欧服']
+        server_combo.bind('<<ComboboxSelected>>', self._on_server_changed)
+
+        ttk.Label(self.ws_frame, text="SN:").grid(row=0, column=2, sticky=tk.W, pady=5, padx=(20,0))
+        ws_sn_from_config = self.config.get("ws_sn", "")
+        self.ws_sn_var = tk.StringVar(value=ws_sn_from_config if ws_sn_from_config else "60HPB02054CA999")
+        ws_sn_entry = ttk.Entry(self.ws_frame, textvariable=self.ws_sn_var, width=20)
+        ws_sn_entry.grid(row=0, column=3, padx=5, pady=5, sticky=tk.W)
+
+        # 连接按钮
         self.connect_btn = ttk.Button(conn_frame, text="连接", command=self._toggle_connection)
-        self.connect_btn.grid(row=0, column=4, padx=15, pady=5)
+        self.connect_btn.grid(row=2, column=4, padx=15, pady=5)
 
         self.conn_status = ttk.Label(conn_frame, text="未连接", foreground="red")
-        self.conn_status.grid(row=0, column=5, padx=5, pady=5)
+        self.conn_status.grid(row=2, column=5, padx=5, pady=5)
+
+        # 根据通信方式显示/隐藏设置
+        self._on_comm_type_changed(None)
 
         # 2. 文件选择区域
         file_frame = ttk.LabelFrame(main_frame, text="AXF文件", padding=10)
-        file_frame.pack(fill=tk.X, pady=(0, 10))
+        file_frame.pack(fill=tk.NONE, anchor=tk.W, pady=(0, 10))
 
         ttk.Label(file_frame, text="文件路径:").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.axf_file_var = tk.StringVar()
         axf_entry = ttk.Entry(file_frame, textvariable=self.axf_file_var, width=50)
-        axf_entry.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W+tk.E)
+        axf_entry.grid(row=0, column=1, padx=(5, 2), pady=5, sticky=tk.W)
 
         browse_btn = tk.Button(file_frame, text="浏览...", command=self._browse_file,
                                bg="#607D8B", fg="white", padx=20, pady=5)
-        browse_btn.grid(row=0, column=2, padx=5, pady=5)
+        browse_btn.grid(row=0, column=2, padx=(0, 5), pady=5)
 
         # 3. 批量读取区域（4组数据，每行一组）
         batch_frame = ttk.LabelFrame(main_frame, text="批量读取（4组数据）", padding=10)
@@ -177,7 +223,7 @@ class FixedModbusGUI:
         # 为每组创建控件（每行一组）
         for i in range(4):
             # 变量输入（Combobox，支持输入和选择历史）
-            var_combo = ttk.Combobox(batch_frame, textvariable=self.batch_vars[i], width=40, state="normal")
+            var_combo = ttk.Combobox(batch_frame, textvariable=self.batch_vars[i], width=30, state="normal")
             var_combo.grid(row=i+1, column=0, padx=2, pady=2)
             var_combo['values'] = self.config.get("variable_history", [])
             var_combo.bind('<<ComboboxSelected>>', lambda e, idx=i: self._on_batch_var_selected(e, idx))
@@ -215,7 +261,7 @@ class FixedModbusGUI:
         result_frame = ttk.LabelFrame(main_frame, text="结果", padding=10)
         result_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
-        self.result_text = scrolledtext.ScrolledText(result_frame, height=10)
+        self.result_text = scrolledtext.ScrolledText(result_frame, height=20)
         self.result_text.pack(fill=tk.BOTH, expand=True)
 
         self.result_text.insert(tk.END, "结果将显示在这里...\n")
@@ -253,6 +299,12 @@ class FixedModbusGUI:
     def _queue_update(self, func, *args):
         """将更新请求放入队列"""
         self.message_queue.put((func, args))
+
+    def _log_result(self, message):
+        """将日志信息同时输出到控制台和结果框"""
+        print(message)
+        self.result_text.insert(tk.END, message + "\n")
+        self.result_text.see(tk.END)
 
     def _browse_file(self):
         """浏览文件并自动加载"""
@@ -318,19 +370,25 @@ class FixedModbusGUI:
         self.result_text.insert(tk.END, "="*50 + "\n")
         self.result_text.see(tk.END)
 
-        # 在状态栏显示一些示例变量
-        variables = parser.list_global_variables()
-        print(f"[DEBUG] variables: {list(variables.items())[:3] if variables else 'empty'}")
-        example_vars = list(variables.items())[:3]
-        for name, addr in example_vars:
-            self.result_text.insert(tk.END, f"  {name}: 0x{addr:08X}\n")
-        if vars_count > 3:
-            self.result_text.insert(tk.END, f"  ... 还有 {vars_count-3} 个变量\n")
         self.result_text.insert(tk.END, "="*50 + "\n")
 
     def _on_packet(self, direction, hex_str, length, description):
         """报文回调"""
         self._packets.append((direction, hex_str, length, description))
+        
+        # 只在结果框中显示有效的响应报文
+        # 接收报文必须以 7F 7F 91 或 7F 7F 92 开头
+        if direction == "RX":
+            # 检查报文开头
+            valid_headers = ["7F 7F 91", "7F 7F 92"]
+            if not any(hex_str.startswith(header) for header in valid_headers):
+                # 不是有效的响应报文，不在结果框显示，只在后台打印
+                return
+        
+        # 在结果框中显示原始报文
+        direction_text = "发送" if direction == "TX" else "接收"
+        packet_info = f"[{direction_text}] {description}\n  报文: {hex_str}"
+        self._log_result(packet_info)
 
     def _on_batch_var_selected(self, event, idx):
         """批量变量下拉框选择事件"""
@@ -358,13 +416,16 @@ class FixedModbusGUI:
 
         # 每组的写地址和读地址
         group_addresses = [
-            {"write": 43507, "read": 43509},  # 第1组
-            {"write": 43511, "read": 43513},  # 第2组
-            {"write": 43515, "read": 43517},  # 第3组
-            {"write": 43519, "read": 43521}   # 第4组
+            {"write": 43507, "read": 43515},  # 第1组
+            {"write": 43509, "read": 43517},  # 第2组
+            {"write": 43511, "read": 43519},  # 第3组
+            {"write": 43513, "read": 43521}   # 第4组
         ]
 
         def batch_read_thread():
+            self._queue_update(self._log_result, "开始批量读取...")
+            self._queue_update(self._log_result, "="*50)
+            
             # 先获取所有地址
             addresses = []
             for i in range(4):
@@ -385,29 +446,58 @@ class FixedModbusGUI:
                         addresses.append(0)
                         self._queue_update(self.batch_addresses[i].set, "0x00000000")
 
-            # 读取数据
+            # 准备批量读取参数（始终传递4组地址，未选择的变量地址为0）
+            all_addresses = addresses
+            all_types = []
+            all_write_addrs = []
+            all_read_addrs = []
+
             for i in range(4):
-                var_path = self.batch_vars[i].get().strip()
-                if not var_path:
-                    continue
+                all_types.append(self.batch_types[i].get())
+                all_write_addrs.append(group_addresses[i]["write"])
+                all_read_addrs.append(group_addresses[i]["read"])
 
-                address = addresses[i]
-                if address == 0:
-                    self._queue_update(self._update_batch_value, i, "未找到变量")
-                    continue
+            # 批量读取
+            self._queue_update(self._log_result, "开始批量读取...")
+            self._queue_update(self._log_result, "="*50)
 
-                display_type = self.batch_types[i].get()
-                write_addr = group_addresses[i]["write"]
-                read_addr = group_addresses[i]["read"]
-                try:
-                    result = self.modbus_client.read_memory(address, display_type, write_addr, read_addr, return_raw=True)
+            try:
+                results = self.modbus_client.batch_read_memory(
+                    all_addresses, all_types, all_write_addrs, all_read_addrs, return_raw=True
+                )
+
+                if results is None:
+                    self._queue_update(self._log_result, "批量读取失败")
+                    return
+
+                # 更新结果
+                for i, result in enumerate(results):
+                    var_path = self.batch_vars[i].get().strip()
+                    if not var_path:
+                        continue
+
                     if result is not None:
                         value, raw_value = result
                         self._queue_update(self._update_batch_value_with_raw, i, value, raw_value)
                         self._queue_update(self._update_status, f"组{i+1}读取成功: {value}")
-                except Exception as e:
+                        self._queue_update(self._log_result, f"  结果: {value} (原始值: 0x{raw_value:08X})")
+                    else:
+                        offline_suffix = "（offline）" if self.modbus_client.ws_client._device_offline else ""
+                        self._queue_update(self._update_batch_value, i, "读取失败")
+                        self._queue_update(self._log_result, f"  结果: 读取失败{offline_suffix}")
+
+            except Exception as e:
+                self._queue_update(self._log_result, f"批量读取错误: {e}")
+                for i in range(4):
+                    var_path = self.batch_vars[i].get().strip()
+                    if not var_path:
+                        continue
                     self._queue_update(self._update_batch_value, i, f"错误: {str(e)}")
                     self._queue_update(self._update_status, f"组{i+1}读取错误: {e}")
+                    self._queue_update(self._log_result, f"  错误: {e}")
+
+            self._queue_update(self._log_result, "="*50)
+            self._queue_update(self._log_result, "批量读取完成")
 
         self._update_status("正在批量读取...")
         threading.Thread(target=batch_read_thread, daemon=True).start()
@@ -484,11 +574,26 @@ class FixedModbusGUI:
                 self.batch_var_combos[i].set("")
         
         self._update_status("已清空")
+        self._log_result("批量读取区域已清空")
 
     def _show_result(self, result):
         """显示结果"""
         self.result_text.insert(tk.END, result)
         self.result_text.see(tk.END)
+
+    def _on_comm_type_changed(self, event):
+        """通信方式改变事件"""
+        comm_type = self.comm_type_var.get()
+        if comm_type == 'serial':
+            self.serial_frame.grid(row=1, column=0, columnspan=6, sticky=tk.W+tk.E, pady=5)
+            self.ws_frame.grid_forget()
+        elif comm_type == 'websocket':
+            self.serial_frame.grid_forget()
+            self.ws_frame.grid(row=1, column=0, columnspan=6, sticky=tk.W+tk.E, pady=5)
+
+    def _on_server_changed(self, event):
+        """服务器选择改变事件"""
+        pass
 
     def _toggle_connection(self):
         """连接/断开连接"""
@@ -500,22 +605,40 @@ class FixedModbusGUI:
             self._update_status("已断开连接")
         else:
             # 连接
-            port = self.port_var.get().strip()
-            baudrate = int(self.baudrate_var.get())
+            comm_type = self.comm_type_var.get()
 
             # 保存配置
-            self.config["port"] = port
-            self.config["baudrate"] = baudrate
+            self.config["comm_type"] = comm_type
+            if comm_type == 'serial':
+                port = self.port_var.get().strip()
+                baudrate = int(self.baudrate_var.get())
+                self.config["port"] = port
+                self.config["baudrate"] = baudrate
+            elif comm_type == 'websocket':
+                self.config["ws_sn"] = self.ws_sn_var.get()
             self._save_config()
 
             # 创建客户端
             try:
-                self.modbus_client = ModbusMemoryClient(
-                    port=port,
-                    baudrate=baudrate,
-                    timeout=float(self.config.get("timeout", 1.0)),
-                    packet_callback=self._on_packet
-                )
+                if comm_type == 'serial':
+                    self.modbus_client = ModbusMemoryClient(
+                        port=port,
+                        baudrate=baudrate,
+                        timeout=float(self.config.get("timeout", 1.0)),
+                        packet_callback=self._on_packet,
+                        comm_type='serial'
+                    )
+                elif comm_type == 'websocket':
+                    self.modbus_client = ModbusMemoryClient(
+                        comm_type='websocket',
+                        timeout=float(self.config.get("timeout", 1.0)),
+                        packet_callback=self._on_packet
+                    )
+                    # 设置WebSocket连接参数（使用默认值，SN需要设置）
+                    if hasattr(self.modbus_client, 'ws_client') and self.modbus_client.ws_client:
+                        self.modbus_client.ws_client.set_connection_params(
+                            sn=self.ws_sn_var.get()
+                        )
             except Exception as e:
                 messagebox.showerror("错误", f"创建客户端失败: {e}")
                 return
@@ -528,7 +651,7 @@ class FixedModbusGUI:
                 try:
                     connected = self.modbus_client.connect()
                     if connected:
-                        self._queue_update(self._connection_success, port)
+                        self._queue_update(self._connection_success, comm_type)
                     else:
                         self._queue_update(self._connection_failed, "连接失败")
                 except Exception as e:
@@ -536,17 +659,24 @@ class FixedModbusGUI:
 
             threading.Thread(target=connect_thread, daemon=True).start()
 
-    def _connection_success(self, port):
+    def _connection_success(self, comm_type):
         """连接成功"""
         self.connect_btn.config(state=tk.NORMAL, text="断开连接")
         self.conn_status.config(text="已连接", foreground="green")
-        self._update_status(f"已连接到 {port}")
+        if comm_type == 'serial':
+            port = self.port_var.get().strip()
+            self._update_status(f"已连接到 {port}")
+            self._log_result(f"已连接到串口: {port}")
+        elif comm_type == 'websocket':
+            self._update_status(f"已连接到 WebSocket 服务器")
+            self._log_result(f"已连接到 WebSocket 服务器")
 
     def _connection_failed(self, error_msg):
         """连接失败"""
         self.connect_btn.config(state=tk.NORMAL, text="连接")
         self.conn_status.config(text="未连接", foreground="red")
         self._update_status(f"连接失败: {error_msg}")
+        self._log_result(f"连接失败: {error_msg}")
         messagebox.showerror("连接失败", f"无法连接到设备: {error_msg}")
 
     def _update_status(self, text):

@@ -526,7 +526,7 @@ class FixedModbusGUI:
         import struct
         
         if display_type == "hex":
-            return raw_value
+            return f"0x{raw_value:08X}"
         elif display_type == "float":
             return struct.unpack('f', struct.pack('I', raw_value))[0]
         elif display_type == "int32":

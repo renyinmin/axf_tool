@@ -489,10 +489,10 @@ class ModbusMemoryClient:
             print(f"WebSocket写入错误: {e}")
             return False
 
-    def _convert_value(self, raw_value: int, display_type: DisplayType) -> Union[int, float]:
+    def _convert_value(self, raw_value: int, display_type: DisplayType) -> Union[int, float, str]:
         """将原始32位值转换为指定类型"""
         if display_type == DisplayType.HEX:
-            return raw_value
+            return f"0x{raw_value:08X}"
         elif display_type == DisplayType.FLOAT:
             return struct.unpack('f', struct.pack('I', raw_value))[0]
         elif display_type == DisplayType.INT32:

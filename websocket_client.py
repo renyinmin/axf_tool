@@ -291,10 +291,13 @@ class WebSocketClient:
         hex_str = hex_data.replace(' ', '').strip()
         modbus_data = bytes.fromhex(hex_str)
         
-        frame = self._build_frame(modbus_data)
-        frame_hex = frame.hex()
+        # 去掉Modbus数据的CRC（最后2字节），只保留地址、功能码、数据
+        modbus_data_without_crc = modbus_data[:-2]
+
+        frame = self._build_frame(modbus_data_without_crc)
+        frame_hex = frame.hex().upper()
         hex_with_spaces = ' '.join([frame_hex[i:i+2] for i in range(0, len(frame_hex), 2)])
-        
+
         success = self._send_json_message("send", hex_with_spaces)
         if success:
             modbus_with_spaces = ' '.join([hex_str[i:i+2] for i in range(0, len(hex_str), 2)])
@@ -460,10 +463,10 @@ class WebSocketClient:
         
         frame.append(0x11)
         
-        frame.append(0x12)
-        frame.append(0x34)
-        frame.append(0x56)
-        frame.append(0x78)
+        frame.append(0x4D)
+        frame.append(0x64)
+        frame.append(0x57)
+        frame.append(0x10)
         
         data_len = len(modbus_data)
         frame.append((data_len >> 8) & 0xFF)
@@ -522,8 +525,8 @@ class WebSocketClient:
             # 字节位置：0-1=帧头, 2=功能码, 3-6=应答序列, 7-8=数据长度
             data_len = (frame_data[7] << 8) | frame_data[8]
             print(f"[DEBUG] 数据长度解析: frame_data[7]={frame_data[7]:02X}, frame_data[8]={frame_data[8]:02X}, data_len={data_len}")
-            
-            # 直接查找帧尾 F7 F7 来确定 Modbus 数据边界
+
+            # 查找帧尾 F7 F7 来确定 Modbus 数据边界
             if frame_data[-2] == 0xF7 and frame_data[-1] == 0xF7:
                 modbus_data = frame_data[9:-2]
                 print(f"[DEBUG] 通过帧尾找到Modbus数据，长度={len(modbus_data)}")

@@ -179,6 +179,13 @@ class FixedModbusGUI:
         ws_sn_entry = ttk.Entry(self.ws_frame, textvariable=self.ws_sn_var, width=20)
         ws_sn_entry.grid(row=0, column=3, padx=5, pady=5, sticky=tk.W)
 
+        ttk.Label(self.ws_frame, text="设备类型:").grid(row=0, column=4, sticky=tk.W, pady=5, padx=(20,0))
+        self.device_type_var = tk.StringVar(value=self.config.get("device_type", "H3PLUS"))
+        device_type_combo = ttk.Combobox(self.ws_frame, textvariable=self.device_type_var, width=10)
+        device_type_combo.grid(row=0, column=5, padx=5, pady=5, sticky=tk.W)
+        device_type_combo['values'] = ['H3PLUS', 'X7']
+        device_type_combo.bind('<<ComboboxSelected>>', self._on_device_type_changed)
+
         # 连接按钮
         self.connect_btn = ttk.Button(conn_frame, text="连接", command=self._toggle_connection)
         self.connect_btn.grid(row=2, column=4, padx=15, pady=5)
@@ -375,16 +382,13 @@ class FixedModbusGUI:
     def _on_packet(self, direction, hex_str, length, description):
         """报文回调"""
         self._packets.append((direction, hex_str, length, description))
-        
-        # 只在结果框中显示有效的响应报文
+
         # 接收报文必须以 7F 7F 91 或 7F 7F 92 开头
         if direction == "RX":
-            # 检查报文开头
             valid_headers = ["7F 7F 91", "7F 7F 92"]
             if not any(hex_str.startswith(header) for header in valid_headers):
-                # 不是有效的响应报文，不在结果框显示，只在后台打印
                 return
-        
+
         # 在结果框中显示原始报文
         direction_text = "发送" if direction == "TX" else "接收"
         packet_info = f"[{direction_text}] {description}\n  报文: {hex_str}"
@@ -595,6 +599,15 @@ class FixedModbusGUI:
         """服务器选择改变事件"""
         pass
 
+    def _on_device_type_changed(self, event):
+        """设备类型选择改变事件"""
+        device_type = self.device_type_var.get()
+        self.config["device_type"] = device_type
+        self._save_config()
+        if self.modbus_client and hasattr(self.modbus_client, 'ws_client') and self.modbus_client.ws_client:
+            self.modbus_client.ws_client.device_type = device_type
+        self._update_status(f"设备类型: {device_type}")
+
     def _toggle_connection(self):
         """连接/断开连接"""
         if hasattr(self.modbus_client, 'connected') and self.modbus_client.connected:
@@ -637,7 +650,9 @@ class FixedModbusGUI:
                     # 设置WebSocket连接参数（使用默认值，SN需要设置）
                     if hasattr(self.modbus_client, 'ws_client') and self.modbus_client.ws_client:
                         self.modbus_client.ws_client.set_connection_params(
-                            sn=self.ws_sn_var.get()
+                            sn=self.ws_sn_var.get(),
+                            server_type=self.server_var.get(),
+                            device_type=self.device_type_var.get()
                         )
             except Exception as e:
                 messagebox.showerror("错误", f"创建客户端失败: {e}")
@@ -669,7 +684,6 @@ class FixedModbusGUI:
             self._log_result(f"已连接到串口: {port}")
         elif comm_type == 'websocket':
             self._update_status(f"已连接到 WebSocket 服务器")
-            self._log_result(f"已连接到 WebSocket 服务器")
 
     def _connection_failed(self, error_msg):
         """连接失败"""

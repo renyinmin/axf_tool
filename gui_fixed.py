@@ -144,12 +144,12 @@ class FixedModbusGUI:
 
         ttk.Label(self.serial_frame, text="串口:").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.port_var = tk.StringVar(value=self.config.get("port", "COM3"))
-        port_combo = ttk.Combobox(self.serial_frame, textvariable=self.port_var, width=12)
+        port_combo = ttk.Combobox(self.serial_frame, textvariable=self.port_var, width=34)
         port_combo.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W)
 
         try:
             import serial.tools.list_ports
-            ports = [port.device for port in serial.tools.list_ports.comports()]
+            ports = [f"{port.device} - {port.description}" for port in serial.tools.list_ports.comports()]
             if not ports:
                 ports = ["COM1", "COM2", "COM3", "COM4", "COM5", "COM6"]
         except:
@@ -623,7 +623,8 @@ class FixedModbusGUI:
             # 保存配置
             self.config["comm_type"] = comm_type
             if comm_type == 'serial':
-                port = self.port_var.get().strip()
+                port_full = self.port_var.get().strip()
+                port = port_full.split(' - ')[0] if ' - ' in port_full else port_full
                 baudrate = int(self.baudrate_var.get())
                 self.config["port"] = port
                 self.config["baudrate"] = baudrate
@@ -679,9 +680,11 @@ class FixedModbusGUI:
         self.connect_btn.config(state=tk.NORMAL, text="断开连接")
         self.conn_status.config(text="已连接", foreground="green")
         if comm_type == 'serial':
-            port = self.port_var.get().strip()
+            port_full = self.port_var.get().strip()
+            port_display = port_full.split(' - ')[1] if ' - ' in port_full else port_full
+            port = port_full.split(' - ')[0] if ' - ' in port_full else port_full
             self._update_status(f"已连接到 {port}")
-            self._log_result(f"已连接到串口: {port}")
+            self._log_result(f"已连接到串口: {port_display}")
         elif comm_type == 'websocket':
             self._update_status(f"已连接到 WebSocket 服务器")
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-修复版GUI - 简化但稳定的Modbus AXF工具界面
+简化但稳定的Modbus AXF工具界面
 """
 
 import tkinter as tk
@@ -48,13 +48,13 @@ def _import_modules():
 print(f"[DEBUG] 模块名称: {__name__}")
 
 class FixedModbusGUI:
-    """修复版GUI，更简单稳定"""
+    """更简单稳定的Modbus AXF工具GUI"""
 
     CONFIG_FILE = "config_fixed.json"
 
     def __init__(self, root):
         self.root = root
-        self.root.title("Modbus AXF工具 - 修复版")
+        self.root.title("Modbus AXF工具")
         self.root.geometry("800x700")
 
         # 设置最小大小
@@ -71,7 +71,7 @@ class FixedModbusGUI:
         # 消息队列（简化）
         self.message_queue = queue.Queue()
 
-        print("修复版GUI初始化...")
+        print("GUI初始化...")
 
         # 创建UI（简化）
         self._create_simple_widgets()
@@ -79,7 +79,7 @@ class FixedModbusGUI:
         # 启动队列处理器
         self._start_queue_processor()
 
-        print("修复版GUI就绪")
+        print("GUI就绪")
 
     def _load_config(self):
         """加载配置"""
@@ -710,7 +710,7 @@ class FixedModbusGUI:
 
 def main():
     """主函数"""
-    print("启动修复版GUI...")
+    print("启动GUI...")
 
     # 导入模块
     if not _import_modules():

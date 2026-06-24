@@ -352,7 +352,8 @@ class ModbusMemoryClient:
             print(f"WebSocket读取错误: {e}")
             return None
 
-    def write_memory(self, address: int, value: int, value_type: DisplayType = DisplayType.UINT32) -> bool:
+    def write_memory(self, address: int, value: int, value_type: DisplayType = DisplayType.UINT32,
+                    write_addr: int = None, read_addr: int = None) -> bool:
         if not self.connected:
             if not self.connect():
                 return False
@@ -361,15 +362,20 @@ class ModbusMemoryClient:
             value_type = DisplayType(value_type)
 
         if self.comm_type == 'websocket' and self.ws_client:
-            return self._write_memory_ws(address, value, value_type)
+            return self._write_memory_ws(address, value, value_type, write_addr, read_addr)
         elif self.comm_type == 'serial' and self.serial_client:
-            return self._write_memory_serial(address, value, value_type)
+            return self._write_memory_serial(address, value, value_type, write_addr, read_addr)
         else:
             print(f"写入失败: 无效的通信类型 {self.comm_type}")
             return False
 
-    def _write_memory_serial(self, address: int, value: int, value_type: DisplayType) -> bool:
+    def _write_memory_serial(self, address: int, value: int, value_type: DisplayType,
+                             write_addr: int = None, read_addr: int = None) -> bool:
         """通过串口写入内存"""
+        # 使用指定的写地址和读地址，如果没有指定则使用默认值
+        _write_addr = write_addr if write_addr is not None else self.ADDR_WRITE_ADDR
+        _read_addr = read_addr if read_addr is not None else self.ADDR_READ_DATA
+
         try:
             raw_value = self._value_to_raw(value, value_type)
 
@@ -383,12 +389,12 @@ class ModbusMemoryClient:
             addr_low = address & 0xFFFF
 
             write_addr_req = self._build_write_registers_request(
-                self.ADDR_WRITE_ADDR, [addr_high, addr_low]
+                _write_addr, [addr_high, addr_low]
             )
-            self._print_packet("发送", write_addr_req, f"写寄存器 {self.ADDR_WRITE_ADDR} (设置内存地址)")
+            self._print_packet("发送", write_addr_req, f"写寄存器 {_write_addr} (设置内存地址)")
 
             write_addr_result = self.serial_client.write_registers(
-                self.ADDR_WRITE_ADDR,
+                _write_addr,
                 [addr_high, addr_low]
             )
 
@@ -397,7 +403,7 @@ class ModbusMemoryClient:
                 return False
 
             write_addr_resp = bytes([0x01, 0x10,
-                                     (self.ADDR_WRITE_ADDR >> 8) & 0xFF, self.ADDR_WRITE_ADDR & 0xFF,
+                                     (_write_addr >> 8) & 0xFF, _write_addr & 0xFF,
                                      0x00, 0x02])
             crc = self._calculate_crc(bytearray(write_addr_resp))
             write_addr_resp = write_addr_resp + crc
@@ -409,12 +415,12 @@ class ModbusMemoryClient:
             data_low = raw_value & 0xFFFF
 
             write_data_req = self._build_write_registers_request(
-                self.ADDR_READ_DATA, [data_high, data_low]
+                _read_addr, [data_high, data_low]
             )
-            self._print_packet("发送", write_data_req, f"写寄存器 {self.ADDR_READ_DATA} (写入数据)")
+            self._print_packet("发送", write_data_req, f"写寄存器 {_read_addr} (写入数据)")
 
             write_data_result = self.serial_client.write_registers(
-                self.ADDR_READ_DATA,
+                _read_addr,
                 [data_high, data_low]
             )
 
@@ -423,7 +429,7 @@ class ModbusMemoryClient:
                 return False
 
             write_data_resp = bytes([0x01, 0x10,
-                                     (self.ADDR_READ_DATA >> 8) & 0xFF, self.ADDR_READ_DATA & 0xFF,
+                                     (_read_addr >> 8) & 0xFF, _read_addr & 0xFF,
                                      0x00, 0x02])
             crc = self._calculate_crc(bytearray(write_data_resp))
             write_data_resp = write_data_resp + crc
@@ -439,20 +445,25 @@ class ModbusMemoryClient:
             print(f"未知错误: {e}")
             return False
 
-    def _write_memory_ws(self, address: int, value: int, value_type: DisplayType) -> bool:
+    def _write_memory_ws(self, address: int, value: int, value_type: DisplayType,
+                         write_addr: int = None, read_addr: int = None) -> bool:
         """通过WebSocket写入内存"""
+        # 使用指定的写地址和读地址，如果没有指定则使用默认值
+        _write_addr = write_addr if write_addr is not None else self.ADDR_WRITE_ADDR
+        _read_addr = read_addr if read_addr is not None else self.ADDR_READ_DATA
+
         try:
             if address is None:
                 print(f"错误: address 参数为 None")
                 return False
-            
+
             if value is None:
                 print(f"错误: value 参数为 None")
                 return False
-            
+
             if isinstance(value_type, str):
                 value_type = DisplayType(value_type)
-            
+
             raw_value = self._value_to_raw(value, value_type)
 
             print(f"\n{'='*60}")
@@ -465,7 +476,7 @@ class ModbusMemoryClient:
             addr_low = address & 0xFFFF
 
             # 写入地址（写入2个寄存器：地址高16位和低16位）
-            parsed_data, _ = self.ws_client.send_modbus_command_with_raw(1, 16, self.ADDR_WRITE_ADDR, 2,
+            parsed_data, _ = self.ws_client.send_modbus_command_with_raw(1, 16, _write_addr, 2,
                 f"{addr_high:04X} {addr_low:04X}")
             if not parsed_data:
                 print(f"写入地址失败")
@@ -476,7 +487,7 @@ class ModbusMemoryClient:
             # 写入数据（写入2个寄存器：数据高16位和低16位）
             data_high = (raw_value >> 16) & 0xFFFF
             data_low = raw_value & 0xFFFF
-            parsed_data, _ = self.ws_client.send_modbus_command_with_raw(1, 16, self.ADDR_READ_DATA, 2,
+            parsed_data, _ = self.ws_client.send_modbus_command_with_raw(1, 16, _read_addr, 2,
                 f"{data_high:04X} {data_low:04X}")
             if not parsed_data:
                 print(f"写入数据失败")
@@ -745,7 +756,6 @@ class ModbusMemoryClient:
         except Exception as e:
             print(f"WebSocket批量读取错误: {e}")
             return None
-
 
 def test():
     """测试函数"""

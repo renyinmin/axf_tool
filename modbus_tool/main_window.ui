@@ -1,0 +1,866 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1200</width>
+    <height>800</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>工具集 - Modbus串口工具 &amp; 进制转换器</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QStackedWidget" name="stackedWidget">
+      <property name="currentIndex">
+       <number>0</number>
+      </property>
+      <widget class="QWidget" name="modbusPage">
+       <layout class="QVBoxLayout" name="verticalLayout_2">
+        <item>
+         <widget class="QSplitter" name="splitter">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <widget class="QWidget" name="left_widget">
+           <layout class="QVBoxLayout" name="verticalLayout_3">
+            <item>
+             <widget class="QGroupBox" name="serial_group">
+              <property name="title">
+               <string>串口配置</string>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_4">
+               <item>
+                <layout class="QGridLayout" name="gridLayout">
+                 <item row="0" column="0">
+                  <widget class="QLabel" name="label">
+                   <property name="text">
+                    <string>端口:</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="0" column="1">
+                  <widget class="QComboBox" name="port_combo">
+                   <property name="minimumSize">
+                    <size>
+                     <width>120</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="0" column="2">
+                  <widget class="QLabel" name="label_2">
+                   <property name="text">
+                    <string>波特率:</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="0" column="3">
+                  <widget class="QComboBox" name="baud_combo">
+                   <property name="minimumSize">
+                    <size>
+                     <width>80</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="0">
+                  <widget class="QLabel" name="label_3">
+                   <property name="text">
+                    <string>数据位:</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="1">
+                  <widget class="QComboBox" name="data_bits_combo">
+                   <property name="minimumSize">
+                    <size>
+                     <width>60</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="2">
+                  <widget class="QLabel" name="label_4">
+                   <property name="text">
+                    <string>停止位:</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="3">
+                  <widget class="QComboBox" name="stop_bits_combo">
+                   <property name="minimumSize">
+                    <size>
+                     <width>60</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="0">
+                  <widget class="QLabel" name="label_5">
+                   <property name="text">
+                    <string>校验位:</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="1">
+                  <widget class="QComboBox" name="parity_combo">
+                   <property name="minimumSize">
+                    <size>
+                     <width>80</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="button_layout">
+                 <item>
+                  <widget class="QPushButton" name="refresh_btn">
+                   <property name="text">
+                    <string>刷新端口</string>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>80</width>
+                     <height>30</height>
+                    </size>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="open_btn">
+                   <property name="text">
+                    <string>打开串口</string>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>80</width>
+                     <height>30</height>
+                    </size>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <widget class="QGroupBox" name="modbus_group">
+              <property name="title">
+               <string>Modbus配置</string>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_5">
+               <item>
+                <layout class="QGridLayout" name="gridLayout_2">
+                 <item row="0" column="0">
+                  <widget class="QLabel" name="label_6">
+                   <property name="text">
+                    <string>从站地址:</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="0" column="1">
+                  <widget class="QLineEdit" name="slave_addr_edit">
+                   <property name="maximumSize">
+                    <size>
+                     <width>60</width>
+                     <height>16777215</height>
+                    </size>
+                   </property>
+                   <property name="text">
+                    <string>1</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="0" column="2">
+                  <widget class="QLabel" name="label_7">
+                   <property name="text">
+                    <string>功能码:</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="0" column="3">
+                  <widget class="QComboBox" name="func_code_combo">
+                   <property name="minimumSize">
+                    <size>
+                     <width>150</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="0">
+                  <widget class="QLabel" name="label_8">
+                   <property name="text">
+                    <string>起始地址:</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="1">
+                  <widget class="QLineEdit" name="start_addr_edit">
+                   <property name="maximumSize">
+                    <size>
+                     <width>80</width>
+                     <height>16777215</height>
+                    </size>
+                   </property>
+                   <property name="text">
+                    <string>0</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="2">
+                  <widget class="QLabel" name="label_9">
+                   <property name="text">
+                    <string>数量:</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="3">
+                  <widget class="QLineEdit" name="reg_count_edit">
+                   <property name="maximumSize">
+                    <size>
+                     <width>60</width>
+                     <height>16777215</height>
+                    </size>
+                   </property>
+                   <property name="text">
+                    <string>1</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="0">
+                  <widget class="QLabel" name="label_10">
+                   <property name="text">
+                    <string>地址格式:</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="1">
+                  <widget class="QComboBox" name="addr_format_combo">
+                   <property name="minimumSize">
+                    <size>
+                     <width>80</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="2">
+                  <widget class="QLabel" name="label_11">
+                   <property name="text">
+                    <string>数据格式:</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="3">
+                  <widget class="QComboBox" name="data_format_combo">
+                   <property name="minimumSize">
+                    <size>
+                     <width>80</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <widget class="QGroupBox" name="data_group">
+              <property name="title">
+               <string>数据输入</string>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_6">
+               <item>
+                <layout class="QHBoxLayout" name="single_value_layout">
+                 <item>
+                  <widget class="QLabel" name="label_12">
+                   <property name="text">
+                    <string>值:</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>60</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLineEdit" name="single_value_edit">
+                   <property name="text">
+                    <string>0</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <layout class="QVBoxLayout" name="multi_value_layout">
+                 <item>
+                  <widget class="QLabel" name="label_13">
+                   <property name="text">
+                    <string>多个值(用逗号分隔):</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLineEdit" name="multi_value_edit">
+                   <property name="text">
+                    <string>0</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="coil_value_layout">
+                 <item>
+                  <widget class="QLabel" name="label_14">
+                   <property name="text">
+                    <string>线圈值:</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>60</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QCheckBox" name="coil_on_radio">
+                   <property name="text">
+                    <string>ON(1)</string>
+                   </property>
+                   <property name="checked">
+                    <bool>true</bool>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QCheckBox" name="coil_off_radio">
+                   <property name="text">
+                    <string>OFF(0)</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <spacer name="horizontalSpacer">
+                   <property name="orientation">
+                    <enum>Qt::Horizontal</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>40</width>
+                     <height>20</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                </layout>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="button_container">
+              <item>
+               <widget class="QPushButton" name="generate_btn">
+                <property name="text">
+                 <string>生成Modbus报文</string>
+                </property>
+                <property name="minimumSize">
+                 <size>
+                  <width>120</width>
+                  <height>35</height>
+                 </size>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">QPushButton {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-weight: bold;
+}
+QPushButton:hover {
+    background-color: #45a049;
+}
+QPushButton:pressed {
+    background-color: #3d8b40;
+}</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="generate_custom_btn">
+                <property name="text">
+                 <string>生成自定义报文</string>
+                </property>
+                <property name="minimumSize">
+                 <size>
+                  <width>120</width>
+                  <height>35</height>
+                 </size>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">QPushButton {
+    background-color: #FF9800;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-weight: bold;
+}
+QPushButton:hover {
+    background-color: #F57C00;
+}
+QPushButton:pressed {
+    background-color: #EF6C00;
+}</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="send_btn">
+                <property name="text">
+                 <string>发送Modbus请求</string>
+                </property>
+                <property name="minimumSize">
+                 <size>
+                  <width>120</width>
+                  <height>35</height>
+                 </size>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">QPushButton {
+    background-color: #2196F3;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-weight: bold;
+}
+QPushButton:hover {
+    background-color: #1976D2;
+}
+QPushButton:pressed {
+    background-color: #0D47A1;
+}</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <spacer name="verticalSpacer">
+              <property name="orientation">
+               <enum>Qt::Vertical</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>20</width>
+                <height>40</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </widget>
+          <widget class="QWidget" name="right_widget">
+           <layout class="QVBoxLayout" name="verticalLayout_7">
+            <item>
+             <widget class="QGroupBox" name="communication_group">
+              <property name="title">
+               <string>通信数据</string>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_8">
+               <item>
+                <layout class="QHBoxLayout" name="communication_buttons_layout">
+                 <item>
+                  <widget class="QPushButton" name="clear_packet_btn">
+                   <property name="text">
+                    <string>清空通信</string>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>80</width>
+                     <height>30</height>
+                    </size>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="copy_packet_btn">
+                   <property name="text">
+                    <string>复制通信</string>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>80</width>
+                     <height>30</height>
+                    </size>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <spacer name="horizontalSpacer_2">
+                   <property name="orientation">
+                    <enum>Qt::Horizontal</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>40</width>
+                     <height>20</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <widget class="QTextEdit" name="communication_text">
+                 <property name="font">
+                  <font>
+                   <family>Courier New</family>
+                   <pointsize>9</pointsize>
+                  </font>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="converterPage">
+       <layout class="QVBoxLayout" name="verticalLayout_9">
+        <item>
+         <widget class="QSplitter" name="splitter_2">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <widget class="QGroupBox" name="radix_group">
+           <property name="title">
+            <string>进制转换</string>
+           </property>
+           <layout class="QVBoxLayout" name="verticalLayout_10">
+            <item>
+             <layout class="QVBoxLayout" name="base_selection_layout">
+              <item>
+               <layout class="QVBoxLayout" name="from_layout">
+                <item>
+                 <widget class="QLabel" name="label_15">
+                  <property name="text">
+                   <string>从进制:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <layout class="QHBoxLayout" name="from_buttons_layout"/>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <layout class="QVBoxLayout" name="to_layout">
+                <item>
+                 <widget class="QLabel" name="label_16">
+                  <property name="text">
+                   <string>到进制:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <layout class="QHBoxLayout" name="to_buttons_layout"/>
+                </item>
+               </layout>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QFormLayout" name="input_layout">
+              <item row="0" column="0">
+               <widget class="QLabel" name="label_17">
+                <property name="text">
+                 <string>转换数字:</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QLineEdit" name="radix_input">
+                <property name="placeholderText">
+                 <string>在此输入待转换数字</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="convert_button_layout">
+              <item>
+               <widget class="QPushButton" name="convert_button">
+                <property name="text">
+                 <string>转换</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="horizontalSpacer_3">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>40</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QVBoxLayout" name="result_layout">
+              <item>
+               <widget class="QLabel" name="label_18">
+                <property name="text">
+                 <string>转换结果:</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QTextEdit" name="radix_result">
+                <property name="maximumHeight">
+                 <number>80</number>
+                </property>
+                <property name="plainText">
+                 <string>此处为对应上方填入的数值转换后的结果</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <widget class="QLabel" name="note_label">
+              <property name="text">
+               <string>注意：如果位数不足，转换结果会自动在前面补0来补满对应的位数</string>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">color: #7f8c8d; font-style: italic;</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+          <widget class="QGroupBox" name="ieee_group">
+           <property name="title">
+            <string>IEEE 754浮点数转换</string>
+           </property>
+           <layout class="QVBoxLayout" name="verticalLayout_11">
+            <item>
+             <layout class="QFormLayout" name="ieee_input_layout">
+              <item row="0" column="0">
+               <widget class="QLabel" name="label_19">
+                <property name="text">
+                 <string>10进制浮点数:</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QLineEdit" name="decimal_input">
+                <property name="placeholderText">
+                 <string>输入10进制数</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="label_20">
+                <property name="text">
+                 <string>16进制浮点数:</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <widget class="QLineEdit" name="hex_input">
+                <property name="placeholderText">
+                 <string>输入16进制数（每个字节中间可以有空格）</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="ieee_button_layout">
+              <item>
+               <widget class="QPushButton" name="to_hex_button">
+                <property name="text">
+                 <string>10进制 → 16进制</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="to_decimal_button">
+                <property name="text">
+                 <string>16进制 → 10进制</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="horizontalSpacer_4">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>40</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QVBoxLayout" name="ieee_result_layout">
+              <item>
+               <widget class="QLabel" name="label_21">
+                <property name="text">
+                 <string>转换结果:</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QTextEdit" name="ieee_result">
+                <property name="maximumHeight">
+                 <number>80</number>
+                </property>
+                <property name="plainText">
+                 <string>此处为对应上方数值转换后的结果</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <widget class="QLabel" name="ieee_note_label">
+              <property name="text">
+               <string>注意：每个字节中间会有空格，填入到代码中的时候要去掉这些空格</string>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">color: #7f8c8d; font-style: italic;</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1200</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menu">
+    <property name="title">
+     <string>工具</string>
+    </property>
+    <addaction name="actionModbus"/>
+    <addaction name="actionConverter"/>
+   </widget>
+   <widget class="QMenu" name="menu_2">
+    <property name="title">
+     <string>帮助</string>
+    </property>
+    <addaction name="actionAbout"/>
+   </widget>
+   <addaction name="menu"/>
+   <addaction name="menu_2"/>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+  <action name="actionModbus">
+   <property name="text">
+    <string>Modbus串口工具</string>
+   </property>
+  </action>
+  <action name="actionConverter">
+   <property name="text">
+    <string>进制转换器</string>
+   </property>
+  </action>
+  <action name="actionAbout">
+   <property name="text">
+    <string>关于</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

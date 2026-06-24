@@ -206,8 +206,8 @@ class FixedModbusGUI:
                                bg="#607D8B", fg="white", padx=20, pady=5)
         browse_btn.grid(row=0, column=2, padx=(0, 5), pady=5)
 
-        # 3. 批量读取区域（4组数据，每行一组）
-        batch_frame = ttk.LabelFrame(main_frame, text="批量读取（4组数据）", padding=10)
+        # 3. 批量读写区域（4组数据，每行一组）
+        batch_frame = ttk.LabelFrame(main_frame, text="批量读写（4组数据）", padding=10)
         batch_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
         # 4组数据，每行一组
@@ -218,46 +218,77 @@ class FixedModbusGUI:
         self.batch_raw_values = [None for _ in range(4)]  # 保存原始数据用于类型转换
         self.batch_var_combos = []
 
+        # 表头样式
+        header_font = ("", 9, "bold")
+        header_bg = "#E0E0E0"
+
         # 表头
-        ttk.Label(batch_frame, text="变量").grid(row=0, column=0, padx=5, pady=5)
-        ttk.Label(batch_frame, text="地址").grid(row=0, column=1, padx=5, pady=5)
-        ttk.Label(batch_frame, text="值").grid(row=0, column=2, padx=5, pady=5)
-        ttk.Label(batch_frame, text="类型").grid(row=0, column=3, padx=5, pady=5)
+        headers = [
+            ("#", 3), ("变量", 28), ("地址", 14), ("值", 14), ("类型", 8), ("操作", 6)
+        ]
+        for col, (text, width) in enumerate(headers):
+            lbl = tk.Label(batch_frame, text=text, font=header_font, bg=header_bg,
+                          width=width, relief=tk.GROOVE, anchor=tk.CENTER)
+            lbl.grid(row=0, column=col, padx=1, pady=(5, 2), sticky=tk.EW, ipady=2)
+
+        # 交替行颜色
+        row_colors = ["#FFFFFF", "#F5F5F5"]
 
         # 为每组创建控件（每行一组）
         for i in range(4):
+            row_bg = row_colors[i % 2]
+
+            # 行号
+            num_lbl = tk.Label(batch_frame, text=str(i + 1), width=3, bg=row_bg,
+                              anchor=tk.CENTER, font=("", 9))
+            num_lbl.grid(row=i + 1, column=0, padx=1, pady=1, sticky=tk.EW)
+
             # 变量输入（Combobox，支持输入和选择历史）
-            var_combo = ttk.Combobox(batch_frame, textvariable=self.batch_vars[i], width=30, state="normal")
-            var_combo.grid(row=i+1, column=0, padx=2, pady=2)
+            var_combo = ttk.Combobox(batch_frame, textvariable=self.batch_vars[i], width=26, state="normal")
+            var_combo.grid(row=i + 1, column=1, padx=1, pady=1)
             var_combo['values'] = self.config.get("variable_history", [])
             var_combo.bind('<<ComboboxSelected>>', lambda e, idx=i: self._on_batch_var_selected(e, idx))
             self.batch_var_combos.append(var_combo)
-            
+
             # 地址显示
-            addr_entry = ttk.Entry(batch_frame, textvariable=self.batch_addresses[i], width=15, state="readonly")
-            addr_entry.grid(row=i+1, column=1, padx=2, pady=2)
-            
-            # 值显示
-            val_entry = ttk.Entry(batch_frame, textvariable=self.batch_values[i], width=15, state="readonly")
-            val_entry.grid(row=i+1, column=2, padx=2, pady=2)
-            
+            addr_entry = ttk.Entry(batch_frame, textvariable=self.batch_addresses[i], width=14, state="readonly")
+            addr_entry.grid(row=i + 1, column=2, padx=1, pady=1)
+
+            # 值显示（可编辑，支持写入）
+            val_entry = ttk.Entry(batch_frame, textvariable=self.batch_values[i], width=14, state="normal")
+            val_entry.grid(row=i + 1, column=3, padx=1, pady=1)
+
             # 类型选择
-            type_combo = ttk.Combobox(batch_frame, textvariable=self.batch_types[i], width=10)
-            type_combo.grid(row=i+1, column=3, padx=2, pady=2)
+            type_combo = ttk.Combobox(batch_frame, textvariable=self.batch_types[i], width=8)
+            type_combo.grid(row=i + 1, column=4, padx=1, pady=1)
             type_combo['values'] = ["hex", "float", "int32", "uint32", "int16", "uint16", "int8", "uint8"]
             type_combo.bind('<<ComboboxSelected>>', lambda e, idx=i: self._on_type_selected(e, idx))
 
+            # 写入按钮
+            write_btn = tk.Button(batch_frame, text="✎ 写入", bg="#4CAF50", fg="white",
+                                 activebackground="#45A049", activeforeground="white",
+                                 relief=tk.RAISED, bd=1, padx=10,
+                                 font=("", 9), cursor="hand2")
+            write_btn.grid(row=i + 1, column=5, padx=2, pady=1, ipady=2, sticky=tk.NSEW)
+            write_btn.bind('<ButtonRelease-1>', lambda e, idx=i: self._single_write(idx))
+
         # 批量操作按钮
         batch_btn_frame = ttk.Frame(batch_frame)
-        batch_btn_frame.grid(row=5, column=0, columnspan=4, pady=10)
-        
-        batch_read_btn = tk.Button(batch_btn_frame, text="批量读取",
-                                  bg="#9C27B0", fg="white", padx=15, pady=5)
+        batch_btn_frame.grid(row=5, column=0, columnspan=6, pady=(10, 0))
+
+        batch_read_btn = tk.Button(batch_btn_frame, text="📥 批量读取",
+                                  bg="#2196F3", fg="white",
+                                  activebackground="#1976D2", activeforeground="white",
+                                  relief=tk.RAISED, bd=1, padx=12, pady=4,
+                                  font=("", 9, "bold"), cursor="hand2")
         batch_read_btn.pack(side=tk.LEFT, padx=5)
         batch_read_btn.bind('<ButtonRelease-1>', lambda e: self._batch_read())
 
-        batch_clear_btn = tk.Button(batch_btn_frame, text="清空",
-                                  bg="#FF9800", fg="white", padx=15, pady=5)
+        batch_clear_btn = tk.Button(batch_btn_frame, text="🗑 清空",
+                                   bg="#FF9800", fg="white",
+                                   activebackground="#F57C00", activeforeground="white",
+                                   relief=tk.RAISED, bd=1, padx=12, pady=4,
+                                   font=("", 9, "bold"), cursor="hand2")
         batch_clear_btn.pack(side=tk.LEFT, padx=5)
         batch_clear_btn.bind('<ButtonRelease-1>', lambda e: self._batch_clear())
 
@@ -576,6 +607,229 @@ class FixedModbusGUI:
         
         self._update_status("已清空")
         self._log_result("批量读取区域已清空")
+
+    def _parse_display_value(self, value_str: str, display_type: str):
+        """将用户输入的文本值解析为Python int/float"""
+        value_str = value_str.strip()
+        if not value_str:
+            raise ValueError("值为空")
+
+        if display_type == "hex":
+            return int(value_str, 16)
+        elif display_type == "float":
+            return float(value_str)
+        elif display_type in ("int32", "int16", "int8"):
+            return int(value_str)
+        elif display_type in ("uint32", "uint16", "uint8"):
+            return int(value_str)
+        else:
+            raise ValueError(f"不支持的显示类型: {display_type}")
+
+    def _typed_to_raw(self, value, display_type: str) -> int:
+        """将Python值转换为原始32位整数（与modbus_client._value_to_raw逻辑一致）"""
+        import struct
+
+        if display_type == "float":
+            return struct.unpack('I', struct.pack('f', float(value)))[0]
+        elif display_type == "int32":
+            if value < 0:
+                return value + 0x100000000
+            return int(value) & 0xFFFFFFFF
+        elif display_type == "int16":
+            if value < 0:
+                value = value + 0x10000
+            return value & 0xFFFF
+        elif display_type == "uint16":
+            return int(value) & 0xFFFF
+        elif display_type == "int8":
+            if value < 0:
+                value = value + 0x100
+            return value & 0xFF
+        elif display_type == "uint8":
+            return int(value) & 0xFF
+        else:
+            return int(value) & 0xFFFFFFFF
+
+    def _single_write(self, idx):
+        """单行写入"""
+        if not self.axf_parser:
+            messagebox.showwarning("警告", "请先加载AXF文件")
+            return
+
+        if not self.modbus_client or not hasattr(self.modbus_client, 'connected') or not self.modbus_client.connected:
+            messagebox.showwarning("警告", "请先连接Modbus设备")
+            return
+
+        var_path = self.batch_vars[idx].get().strip()
+        if not var_path:
+            messagebox.showwarning("警告", f"第{idx+1}行: 请先选择变量")
+            return
+
+        value_str = self.batch_values[idx].get().strip()
+        if not value_str:
+            messagebox.showwarning("警告", f"第{idx+1}行: 请输入要写入的值")
+            return
+
+        display_type = self.batch_types[idx].get()
+
+        # 解析用户输入的值
+        try:
+            value = self._parse_display_value(value_str, display_type)
+        except (ValueError, TypeError) as e:
+            messagebox.showerror("错误", f"第{idx+1}行 值解析错误: {e}")
+            return
+
+        # 小类型（int16/uint16/int8/uint8）写入不足4字节，需要合并回读值的高位字节
+        small_types = {"int16", "uint16", "int8", "uint8"}
+        if display_type in small_types:
+            if self.batch_raw_values[idx] is None:
+                messagebox.showwarning("警告",
+                    f"第{idx+1}行: {display_type}类型仅写入{'2' if display_type in ('int16','uint16') else '1'}字节，\n"
+                    "请先点击「批量读取」获取当前值后再写入")
+                return
+            # 合并：高位字节保留回读值，低位字节替换为新值
+            old_raw = self.batch_raw_values[idx]
+            new_raw = self._typed_to_raw(value, display_type)
+            if display_type in ("int16", "uint16"):
+                raw_value = (old_raw & 0xFFFF0000) | (new_raw & 0xFFFF)
+            else:  # int8, uint8
+                raw_value = (old_raw & 0xFFFFFF00) | (new_raw & 0xFF)
+        else:
+            raw_value = self._typed_to_raw(value, display_type)
+
+        # 每组的写地址和读地址
+        group_addresses = [
+            {"write": 43507, "read": 43515},  # 第1组
+            {"write": 43509, "read": 43517},  # 第2组
+            {"write": 43511, "read": 43519},  # 第3组
+            {"write": 43513, "read": 43521}   # 第4组
+        ]
+
+        # 构建确认提示：显示旧值 → 新值
+        if self.batch_raw_values[idx] is not None:
+            old_display = str(self._convert_raw_value(self.batch_raw_values[idx], display_type))
+            if display_type in small_types:
+                old_hex = f"0x{self.batch_raw_values[idx]:08X}"
+                new_hex = f"0x{raw_value:08X}"
+                detail = f"旧值: {old_display}  →  新值: {value_str}\n({old_hex} → {new_hex})"
+            else:
+                detail = f"旧值: {old_display}  →  新值: {value_str}"
+        else:
+            detail = f"旧值: 未读取  →  新值: {value_str}"
+
+        if not self._confirm_write(var_path, display_type, detail):
+            return
+
+        self._packets = []
+
+        def write_thread():
+            # 解析地址
+            address = self.axf_parser.get_variable_address(var_path)
+            if address is None:
+                self._queue_update(self._log_result, f"第{idx+1}行: 变量地址未找到")
+                return
+
+            self._queue_update(self.batch_addresses[idx].set, f"0x{address:08X}")
+            self._queue_update(self._add_to_history, var_path)
+            self._queue_update(self._log_result, f"第{idx+1}行 写入: {var_path} = {value_str}")
+            self._queue_update(self._update_status, f"第{idx+1}行 正在写入...")
+
+            try:
+                # 传入合并后的完整32位raw值，用uint32避免_value_to_raw二次转换
+                success = self.modbus_client.write_memory(
+                    address, raw_value, "uint32",
+                    write_addr=group_addresses[idx]["write"],
+                    read_addr=group_addresses[idx]["read"]
+                )
+
+                if success:
+                    # 缓存合并后的完整32位原始值，按类型格式化显示
+                    display_str = str(self._convert_raw_value(raw_value, display_type))
+                    self._queue_update(self._update_batch_raw, idx, raw_value, display_str)
+                    self._queue_update(self._log_result, f"第{idx+1}行 写入成功: {display_str}")
+                    self._queue_update(self._update_status, f"第{idx+1}行 写入成功")
+                else:
+                    self._queue_update(self._log_result, f"第{idx+1}行 写入失败")
+                    self._queue_update(self._update_status, f"第{idx+1}行 写入失败")
+
+            except Exception as e:
+                self._queue_update(self._log_result, f"第{idx+1}行 写入错误: {e}")
+                self._queue_update(self._update_status, f"第{idx+1}行 写入错误: {e}")
+
+        threading.Thread(target=write_thread, daemon=True).start()
+
+    def _confirm_write(self, var_path, display_type, detail):
+        """自定义确认对话框"""
+        dlg = tk.Toplevel(self.root)
+        dlg.title("写入确认")
+        dlg.resizable(False, False)
+        dlg.transient(self.root)
+        dlg.grab_set()
+
+        # 居中
+        w, h = 420, 210
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - w) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - h) // 2
+        dlg.geometry(f"{w}x{h}+{x}+{y}")
+
+        dlg.configure(bg="#FAFAFA")
+
+        # 标题栏
+        title_frame = tk.Frame(dlg, bg="#FF9800", height=36)
+        title_frame.pack(fill=tk.X)
+        title_frame.pack_propagate(False)
+        tk.Label(title_frame, text="⚠ 写入确认", fg="white", bg="#FF9800",
+                 font=("", 11, "bold")).pack(side=tk.LEFT, padx=12, pady=6)
+
+        # 内容
+        content = tk.Frame(dlg, bg="#FAFAFA")
+        content.pack(fill=tk.BOTH, expand=True, padx=16, pady=(14, 8))
+
+        tk.Label(content, text=f"变量: {var_path}", bg="#FAFAFA",
+                 font=("", 9)).pack(anchor=tk.W, pady=2)
+        tk.Label(content, text=f"类型: {display_type}", bg="#FAFAFA",
+                 font=("", 9)).pack(anchor=tk.W, pady=2)
+
+        # 变更详情（用不同颜色）
+        detail_frame = tk.Frame(content, bg="#FFF3E0", relief=tk.GROOVE, bd=1)
+        detail_frame.pack(fill=tk.X, pady=(8, 4), ipady=4)
+        tk.Label(detail_frame, text=detail, bg="#FFF3E0", fg="#E65100",
+                 font=("", 10, "bold"), wraplength=370).pack(padx=10, pady=6)
+
+        tk.Label(content, text="请谨慎操作，确定要继续写入吗？", bg="#FAFAFA",
+                 fg="#757575", font=("", 8)).pack(anchor=tk.CENTER, pady=(2, 0))
+
+        # 按钮
+        result = [False]
+
+        def on_confirm():
+            result[0] = True
+            dlg.destroy()
+
+        def on_cancel():
+            dlg.destroy()
+
+        btn_frame = tk.Frame(dlg, bg="#FAFAFA")
+        btn_frame.pack(fill=tk.X, padx=16, pady=(0, 12))
+
+        confirm_btn = tk.Button(btn_frame, text="确定写入", command=on_confirm,
+                                bg="#F44336", fg="white", activebackground="#D32F2F",
+                                relief=tk.FLAT, padx=20, pady=4, font=("", 9, "bold"))
+        confirm_btn.pack(side=tk.LEFT, expand=True, padx=4)
+
+        cancel_btn = tk.Button(btn_frame, text="取消", command=on_cancel,
+                               bg="#BDBDBD", fg="white", activebackground="#9E9E9E",
+                               relief=tk.FLAT, padx=20, pady=4, font=("", 9))
+        cancel_btn.pack(side=tk.LEFT, expand=True, padx=4)
+
+        dlg.protocol("WM_DELETE_WINDOW", on_cancel)
+        dlg.wait_window()
+        return result[0]
+
+    def _update_batch_raw(self, idx, raw_value, display_str):
+        """更新写入后缓存的原始值并显示"""
+        self.batch_raw_values[idx] = raw_value
+        self.batch_values[idx].set(display_str)
 
     def _show_result(self, result):
         """显示结果"""

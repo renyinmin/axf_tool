@@ -144,22 +144,19 @@ class FixedModbusGUI:
 
         ttk.Label(self.serial_frame, text="串口:").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.port_var = tk.StringVar(value=self.config.get("port", "COM3"))
-        port_combo = ttk.Combobox(self.serial_frame, textvariable=self.port_var, width=34)
-        port_combo.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W)
+        self.port_combo = ttk.Combobox(self.serial_frame, textvariable=self.port_var, width=34)
+        self.port_combo.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W)
 
-        try:
-            import serial.tools.list_ports
-            ports = [f"{port.device} - {port.description}" for port in serial.tools.list_ports.comports()]
-            if not ports:
-                ports = ["COM1", "COM2", "COM3", "COM4", "COM5", "COM6"]
-        except:
-            ports = ["COM1", "COM2", "COM3", "COM4", "COM5", "COM6"]
-        port_combo['values'] = ports
+        # 刷新按钮
+        refresh_btn = ttk.Button(self.serial_frame, text="刷新", command=self._refresh_ports, width=6)
+        refresh_btn.grid(row=0, column=2, padx=2, pady=5)
 
-        ttk.Label(self.serial_frame, text="波特率:").grid(row=0, column=2, sticky=tk.W, pady=5, padx=(15,0))
+        self._refresh_ports()
+
+        ttk.Label(self.serial_frame, text="波特率:").grid(row=0, column=4, sticky=tk.W, pady=5, padx=(15,0))
         self.baudrate_var = tk.StringVar(value=str(self.config.get("baudrate", 9600)))
         baud_combo = ttk.Combobox(self.serial_frame, textvariable=self.baudrate_var, width=10)
-        baud_combo.grid(row=0, column=3, padx=5, pady=5, sticky=tk.W)
+        baud_combo.grid(row=0, column=5, padx=5, pady=5, sticky=tk.W)
         baud_combo['values'] = ['9600', '19200', '38400', '57600', '115200', '230400']
 
         # WebSocket设置
@@ -597,7 +594,25 @@ class FixedModbusGUI:
 
     def _on_server_changed(self, event):
         """服务器选择改变事件"""
-        pass
+        server_type = self.server_var.get()
+        self.config["server"] = server_type
+        self._save_config()
+        if self.modbus_client and hasattr(self.modbus_client, 'ws_client') and self.modbus_client.ws_client:
+            self.modbus_client.ws_client.server_type = server_type
+        self._update_status(f"服务器: {server_type}")
+
+    def _refresh_ports(self):
+        """刷新串口列表"""
+        try:
+            import serial.tools.list_ports
+            ports = [f"{port.device} - {port.description}" for port in serial.tools.list_ports.comports()]
+            if not ports:
+                ports = ["COM1", "COM2", "COM3", "COM4", "COM5", "COM6"]
+        except:
+            ports = ["COM1", "COM2", "COM3", "COM4", "COM5", "COM6"]
+        self.port_combo['values'] = ports
+        if hasattr(self, 'status_var'):
+            self._update_status(f"串口列表已刷新，共 {len(ports)} 个串口")
 
     def _on_device_type_changed(self, event):
         """设备类型选择改变事件"""

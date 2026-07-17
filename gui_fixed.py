@@ -11,6 +11,7 @@ import threading
 import queue
 import sys
 import traceback
+import datetime
 
 # 添加项目目录到路径
 sys.path.insert(0, os.path.dirname(__file__))
@@ -292,6 +293,29 @@ class FixedModbusGUI:
         batch_clear_btn.pack(side=tk.LEFT, padx=5)
         batch_clear_btn.bind('<ButtonRelease-1>', lambda e: self._batch_clear())
 
+        # 自动读取控制
+        auto_read_frame = ttk.Frame(batch_btn_frame)
+        auto_read_frame.pack(side=tk.RIGHT, padx=5)
+
+        ttk.Label(auto_read_frame, text="自动读取:", font=("", 9)).pack(side=tk.LEFT, padx=(0, 5))
+        self.auto_read_interval_var = tk.StringVar(value="2S")
+        self.auto_read_combo = ttk.Combobox(auto_read_frame, textvariable=self.auto_read_interval_var, width=10)
+        self.auto_read_combo['values'] = ["500ms", "1S", "2S", "5S", "10S", "20S"]
+        self.auto_read_combo.pack(side=tk.LEFT, padx=2)
+        self.auto_read_combo.bind('<<ComboboxSelected>>', self._on_auto_read_interval_changed)
+
+        self.auto_read_btn = tk.Button(auto_read_frame, text="▶ 开始",
+                                       bg="#4CAF50", fg="white",
+                                       activebackground="#45A049", activeforeground="white",
+                                       relief=tk.RAISED, bd=1, padx=8, pady=3,
+                                       font=("", 9, "bold"), cursor="hand2")
+        self.auto_read_btn.pack(side=tk.LEFT, padx=5)
+        self.auto_read_btn.bind('<ButtonRelease-1>', lambda e: self._toggle_auto_read())
+
+        # 自动读取定时器
+        self._auto_read_timer = None
+        self._auto_read_running = False
+
         # 4. 结果显示区域
         result_frame = ttk.LabelFrame(main_frame, text="结果", padding=10)
         result_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
@@ -490,7 +514,8 @@ class FixedModbusGUI:
                 all_read_addrs.append(group_addresses[i]["read"])
 
             # 批量读取
-            self._queue_update(self._log_result, "开始批量读取...")
+            now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+            self._queue_update(self._log_result, f"[{now}] 开始批量读取...")
             self._queue_update(self._log_result, "="*50)
 
             try:
@@ -512,11 +537,13 @@ class FixedModbusGUI:
                         value, raw_value = result
                         self._queue_update(self._update_batch_value_with_raw, i, value, raw_value)
                         self._queue_update(self._update_status, f"组{i+1}读取成功: {value}")
-                        self._queue_update(self._log_result, f"  结果: {value} (原始值: 0x{raw_value:08X})")
+                        now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                        self._queue_update(self._log_result, f"[{now}] [{var_path}] 结果: {value} (原始值: 0x{raw_value:08X})")
                     else:
                         offline_suffix = "（offline）" if self.modbus_client.ws_client._device_offline else ""
                         self._queue_update(self._update_batch_value, i, "读取失败")
-                        self._queue_update(self._log_result, f"  结果: 读取失败{offline_suffix}")
+                        now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                        self._queue_update(self._log_result, f"[{now}] [{var_path}] 结果: 读取失败{offline_suffix}")
 
             except Exception as e:
                 self._queue_update(self._log_result, f"批量读取错误: {e}")
@@ -526,10 +553,10 @@ class FixedModbusGUI:
                         continue
                     self._queue_update(self._update_batch_value, i, f"错误: {str(e)}")
                     self._queue_update(self._update_status, f"组{i+1}读取错误: {e}")
-                    self._queue_update(self._log_result, f"  错误: {e}")
+                    now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                    self._queue_update(self._log_result, f"[{now}] [{var_path}] 错误: {e}")
 
             self._queue_update(self._log_result, "="*50)
-            self._queue_update(self._log_result, "批量读取完成")
 
         self._update_status("正在批量读取...")
         threading.Thread(target=batch_read_thread, daemon=True).start()
@@ -607,6 +634,77 @@ class FixedModbusGUI:
         
         self._update_status("已清空")
         self._log_result("批量读取区域已清空")
+
+    def _toggle_auto_read(self):
+        """切换自动读取状态"""
+        if self._auto_read_running:
+            self._stop_auto_read()
+        else:
+            if not self.axf_parser:
+                messagebox.showwarning("警告", "请先加载AXF文件")
+                return
+            if not self.modbus_client or not hasattr(self.modbus_client, 'connected') or not self.modbus_client.connected:
+                messagebox.showwarning("警告", "请先连接Modbus设备")
+                return
+            self._start_auto_read()
+
+    def _start_auto_read(self):
+        """启动自动读取"""
+        self._stop_auto_read()
+        
+        interval_str = self.auto_read_interval_var.get()
+        interval_ms = self._parse_interval(interval_str)
+        
+        self._auto_read_running = True
+        self.auto_read_btn.config(text="⏹ 停止", bg="#F44336", activebackground="#D32F2F")
+        self.auto_read_combo.config(state="disabled")
+        
+        self._update_status(f"自动读取中，间隔 {interval_str}")
+        self._log_result(f"开始自动读取，间隔 {interval_str}")
+        
+        self._auto_read_callback()
+
+    def _stop_auto_read(self):
+        """停止自动读取"""
+        if self._auto_read_timer:
+            self.root.after_cancel(self._auto_read_timer)
+            self._auto_read_timer = None
+        
+        self._auto_read_running = False
+        self.auto_read_btn.config(text="▶ 开始", bg="#4CAF50", activebackground="#45A049")
+        self.auto_read_combo.config(state="normal")
+        
+        if hasattr(self, 'status_var'):
+            self._update_status("自动读取已停止")
+
+    def _auto_read_callback(self):
+        """自动读取回调"""
+        if not self._auto_read_running:
+            return
+        
+        self._batch_read()
+        
+        interval_str = self.auto_read_interval_var.get()
+        interval_ms = self._parse_interval(interval_str)
+        
+        self._auto_read_timer = self.root.after(interval_ms, self._auto_read_callback)
+
+    def _parse_interval(self, interval_str):
+        """解析间隔字符串为毫秒"""
+        interval_map = {
+            "500ms": 500,
+            "1S": 1000,
+            "2S": 2000,
+            "5S": 5000,
+            "10S": 10000,
+            "20S": 20000
+        }
+        return interval_map.get(interval_str, 2000)
+
+    def _on_auto_read_interval_changed(self, event):
+        """自动读取间隔改变事件"""
+        if self._auto_read_running:
+            self._start_auto_read()
 
     def _parse_display_value(self, value_str: str, display_type: str):
         """将用户输入的文本值解析为Python int/float"""
@@ -884,6 +982,7 @@ class FixedModbusGUI:
             self.modbus_client.disconnect()
             self.connect_btn.config(text="连接")
             self.conn_status.config(text="未连接", foreground="red")
+            self._stop_auto_read()
             self._update_status("已断开连接")
         else:
             # 连接
@@ -972,6 +1071,7 @@ class FixedModbusGUI:
 
     def on_closing(self):
         """窗口关闭事件"""
+        self._stop_auto_read()
         if self.modbus_client and hasattr(self.modbus_client, 'connected'):
             self.modbus_client.disconnect()
         self._save_config()

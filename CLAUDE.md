@@ -9,11 +9,12 @@ A Windows desktop tool for parsing AXF/ELF firmware files and reading/writing em
 ## Build & Run Commands
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies (project uses a .venv virtualenv)
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
 
-# Run the GUI
-python main.py
+# Run the GUI (run.bat does this via the .venv interpreter)
+.venv\Scripts\python.exe main.py
 
 # CLI: list all global variables in an AXF file
 python main.py parse <file.axf> --list
@@ -24,7 +25,7 @@ python main.py parse <file.axf> --search <variable_name>
 # CLI: read memory via Modbus serial
 python main.py read --port COM3 --address 0x20000000
 
-# Build standalone Windows EXE
+# Build standalone Windows EXE (entry point is main_simple.py, NOT main.py)
 pyinstaller ModbusAXFTool.spec
 ```
 
@@ -37,8 +38,9 @@ There are **two separate apps** in this repo; the main app is the tkinter one, a
 ### Main App — Data Flow
 
 ```
-main_simple.py          ← PyInstaller entry point / run.bat target
-  └─ gui_fixed.main()   ← tkinter GUI, ~750 lines
+run.bat → main.py           ← normal launch (uses .venv\Scripts\python.exe)
+PyInstaller spec → main_simple.py  ← EXE entry point (deferred pymodbus import)
+Both call gui_fixed.main()  ← tkinter GUI, ~820 lines
        ├─ axf_parser.py      ← AXFParser: reads ELF symbol tables + DWARF debug info
        ├─ modbus_client.py   ← ModbusMemoryClient: dual-transport Modbus comm
        │    └─ websocket_client.py  ← WebSocketClient: cloud relay protocol
@@ -73,6 +75,9 @@ A standalone PyQt5 serial Modbus tool with custom frame building, radix converte
 - **CRC16**: Modbus RTU CRC (polynomial `0xA001`) is implemented in both `modbus_client.py` and `websocket_client.py`.
 - **WebSocket auth**: Hardcoded JWT-style tokens per server environment. The `set_connection_params()` method recomputes `ws_url` from server type + device type.
 - **Device offline detection**: WebSocket info responses with `content: "offline"` set `_device_offline = True`, which the GUI uses for user-facing error messages.
+- **Serial port refresh**: `_refresh_ports()` repopulates the port dropdown on demand via a "刷新" button next to the selector.
+- **Server type persistence**: The server type (测试服/欧服) is saved to `config["server"]` on change and applied to `ws_client.server_type` immediately — no reconnect needed.
+- **Batch read/write**: The batch region supports both read and an independent write button per row (`feat: 批量读写区域增加独立写入按钮`).
 
 ## Dependencies
 

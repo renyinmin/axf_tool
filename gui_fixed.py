@@ -61,6 +61,21 @@ class FixedModbusGUI:
         # 设置最小大小
         self.root.minsize(600, 400)
 
+        # 设置窗口图标
+        try:
+            import sys as _sys
+            if getattr(_sys, 'frozen', False):
+                ico_path = os.path.join(os.path.dirname(_sys.executable), 'fox.ico')
+            else:
+                ico_path = os.path.join(os.path.dirname(__file__), 'fox.ico')
+            if os.path.exists(ico_path):
+                self.root.iconbitmap(ico_path)
+        except Exception:
+            pass
+
+        # 下拉框列表高度（显示更多条目，减少滚动）
+        self.root.option_add('*TCombobox*Listbox.height', 10)
+
         # 配置
         self.config = self._load_config()
 
@@ -123,19 +138,41 @@ class FixedModbusGUI:
             print(f"保存配置失败: {e}")
 
     def _create_simple_widgets(self):
-        """创建简化UI"""
+        """创建UI"""
+        # ========== 全局样式 ==========
+        style = ttk.Style()
+        style.configure("TLabelframe", font=("", 9, "bold"))
+        style.configure("TLabelframe.Label", foreground="#37474F")
+        style.configure("TLabel", font=("", 9))
+        style.configure("TButton", font=("", 9))
+        style.configure("TEntry", font=("", 9))
+        style.configure("TCombobox", font=("", 9))
+
+        # 通用按钮样式工厂
+        def _styled_btn(parent, text, bg, active_bg, command=None, padx=12, pady=4, font_size=9):
+            btn = tk.Button(parent, text=text, bg=bg, fg="white",
+                           activebackground=active_bg, activeforeground="white",
+                           relief=tk.FLAT, bd=0, padx=padx, pady=pady,
+                           font=("", font_size, "bold"), cursor="hand2")
+            if command:
+                btn.configure(command=command)
+            return btn
+
         main_frame = ttk.Frame(self.root, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # 1. 通信设置区域（最上面）
-        conn_frame = ttk.LabelFrame(main_frame, text="通信设置", padding=10)
-        conn_frame.pack(fill=tk.X, pady=(0, 10))
+        # ========== 1. 通信设置 ==========
+        conn_frame = ttk.LabelFrame(main_frame, text="📡 通信设置", padding=(12, 8))
+        conn_frame.pack(fill=tk.X, pady=(0, 8))
 
-        # 通信方式选择
-        ttk.Label(conn_frame, text="通信方式:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        # 通信方式选择（紧凑排列在标签后面）
+        comm_type_frame = ttk.Frame(conn_frame)
+        comm_type_frame.grid(row=0, column=0, sticky=tk.W, pady=5)
+
+        ttk.Label(comm_type_frame, text="通信方式:").pack(side=tk.LEFT)
         self.comm_type_var = tk.StringVar(value=self.config.get("comm_type", "serial"))
-        comm_combo = ttk.Combobox(conn_frame, textvariable=self.comm_type_var, width=12)
-        comm_combo.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W)
+        comm_combo = ttk.Combobox(comm_type_frame, textvariable=self.comm_type_var, width=12)
+        comm_combo.pack(side=tk.LEFT, padx=5)
         comm_combo['values'] = ['serial', 'websocket']
         comm_combo.bind('<<ComboboxSelected>>', self._on_comm_type_changed)
 
@@ -163,7 +200,7 @@ class FixedModbusGUI:
         # WebSocket设置
         self.ws_frame = ttk.Frame(conn_frame)
 
-        # 第一行：服务器选择和SN
+        # 第一行：服务器选择、设备类型、SN
         ttk.Label(self.ws_frame, text="服务器:").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.server_var = tk.StringVar(value=self.config.get("server", "测试服"))
         server_combo = ttk.Combobox(self.ws_frame, textvariable=self.server_var, width=12)
@@ -171,45 +208,61 @@ class FixedModbusGUI:
         server_combo['values'] = ['测试服', '欧服']
         server_combo.bind('<<ComboboxSelected>>', self._on_server_changed)
 
-        ttk.Label(self.ws_frame, text="SN:").grid(row=0, column=2, sticky=tk.W, pady=5, padx=(20,0))
-        ws_sn_from_config = self.config.get("ws_sn", "")
-        self.ws_sn_var = tk.StringVar(value=ws_sn_from_config if ws_sn_from_config else "60HPB02054CA999")
-        ws_sn_entry = ttk.Entry(self.ws_frame, textvariable=self.ws_sn_var, width=20)
-        ws_sn_entry.grid(row=0, column=3, padx=5, pady=5, sticky=tk.W)
-
-        ttk.Label(self.ws_frame, text="设备类型:").grid(row=0, column=4, sticky=tk.W, pady=5, padx=(20,0))
+        ttk.Label(self.ws_frame, text="设备类型:").grid(row=0, column=2, sticky=tk.W, pady=5, padx=(20,0))
         self.device_type_var = tk.StringVar(value=self.config.get("device_type", "H3PLUS"))
         device_type_combo = ttk.Combobox(self.ws_frame, textvariable=self.device_type_var, width=10)
-        device_type_combo.grid(row=0, column=5, padx=5, pady=5, sticky=tk.W)
+        device_type_combo.grid(row=0, column=3, padx=5, pady=5, sticky=tk.W)
         device_type_combo['values'] = ['H3PLUS', 'X7']
         device_type_combo.bind('<<ComboboxSelected>>', self._on_device_type_changed)
 
-        # 连接按钮
-        self.connect_btn = ttk.Button(conn_frame, text="连接", command=self._toggle_connection)
-        self.connect_btn.grid(row=2, column=4, padx=15, pady=5)
+        # SN 历史（按设备类型分别保存）
+        self.ws_sn_history = self.config.get("ws_sn_history", {"H3PLUS": [], "X7": []})
+        if not isinstance(self.ws_sn_history, dict):
+            self.ws_sn_history = {"H3PLUS": [], "X7": []}
+        current_device = self.device_type_var.get()
+        sn_default = self.config.get("ws_sn", self.ws_sn_history.get(current_device, [""])[0] if self.ws_sn_history.get(current_device) else "60HPB02054CA999")
 
-        self.conn_status = ttk.Label(conn_frame, text="未连接", foreground="red")
-        self.conn_status.grid(row=2, column=5, padx=5, pady=5)
+        ttk.Label(self.ws_frame, text="SN:").grid(row=0, column=4, sticky=tk.W, pady=5, padx=(20,0))
+        self.ws_sn_var = tk.StringVar(value=sn_default)
+        self.ws_sn_combo = ttk.Combobox(self.ws_frame, textvariable=self.ws_sn_var, width=20)
+        self.ws_sn_combo.grid(row=0, column=5, padx=5, pady=5, sticky=tk.W)
+        self.ws_sn_combo['values'] = self.ws_sn_history.get(current_device, [])
+        self._update_sn_combo_values()
+
+        # 连接按钮与状态（居中）
+        conn_btn_frame = tk.Frame(conn_frame, bg=self.root.cget("bg"))
+        conn_btn_frame.grid(row=2, column=0, columnspan=6, pady=8)
+
+        self.connect_btn = _styled_btn(conn_btn_frame, "🔌 连接", "#2196F3", "#1976D2", self._toggle_connection)
+        self.connect_btn.pack(side=tk.LEFT, padx=4)
+
+        self.conn_status = tk.Label(conn_btn_frame, text="● 未连接", fg="#F44336",
+                                    font=("", 9, "bold"), bg=self.root.cget("bg"))
+        self.conn_status.pack(side=tk.LEFT, padx=8)
+
+        # 居中整个按钮组
+        conn_frame.grid_rowconfigure(2, weight=0)
+        conn_frame.grid_columnconfigure(0, weight=1)
+        conn_btn_frame.grid_configure(sticky="")
 
         # 根据通信方式显示/隐藏设置
         self._on_comm_type_changed(None)
 
-        # 2. 文件选择区域
-        file_frame = ttk.LabelFrame(main_frame, text="AXF文件", padding=10)
-        file_frame.pack(fill=tk.NONE, anchor=tk.W, pady=(0, 10))
+        # ========== 2. 文件选择 ==========
+        file_frame = ttk.LabelFrame(main_frame, text="📁 AXF 文件", padding=(12, 8))
+        file_frame.pack(fill=tk.X, pady=(0, 8))
 
-        ttk.Label(file_frame, text="文件路径:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Label(file_frame, text="文件路径:").pack(side=tk.LEFT, pady=4)
         self.axf_file_var = tk.StringVar()
-        axf_entry = ttk.Entry(file_frame, textvariable=self.axf_file_var, width=50)
-        axf_entry.grid(row=0, column=1, padx=(5, 2), pady=5, sticky=tk.W)
+        axf_entry = ttk.Entry(file_frame, textvariable=self.axf_file_var, width=44)
+        axf_entry.pack(side=tk.LEFT, padx=8, pady=4, fill=tk.X, expand=True)
 
-        browse_btn = tk.Button(file_frame, text="浏览...", command=self._browse_file,
-                               bg="#607D8B", fg="white", padx=20, pady=5)
-        browse_btn.grid(row=0, column=2, padx=(0, 5), pady=5)
+        browse_btn = _styled_btn(file_frame, "📂 浏览", "#607D8B", "#455A64", self._browse_file)
+        browse_btn.pack(side=tk.LEFT, padx=(4, 0), pady=4)
 
-        # 3. 批量读写区域（4组数据，每行一组）
-        batch_frame = ttk.LabelFrame(main_frame, text="批量读写（4组数据）", padding=10)
-        batch_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        # ========== 3. 批量读写 ==========
+        batch_frame = ttk.LabelFrame(main_frame, text="📊 批量读写（4组数据）", padding=(12, 8))
+        batch_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
 
         # 4组数据，每行一组
         self.batch_vars = [tk.StringVar() for _ in range(4)]
@@ -225,7 +278,7 @@ class FixedModbusGUI:
 
         # 表头
         headers = [
-            ("#", 3), ("变量", 28), ("地址", 14), ("值", 14), ("类型", 8), ("操作", 6)
+            ("#", 3), ("变量", 39), ("地址", 14), ("值", 14), ("类型", 8), ("操作", 6)
         ]
         for col, (text, width) in enumerate(headers):
             lbl = tk.Label(batch_frame, text=text, font=header_font, bg=header_bg,
@@ -245,7 +298,7 @@ class FixedModbusGUI:
             num_lbl.grid(row=i + 1, column=0, padx=1, pady=1, sticky=tk.EW)
 
             # 变量输入（Combobox，支持输入和选择历史）
-            var_combo = ttk.Combobox(batch_frame, textvariable=self.batch_vars[i], width=26, state="normal")
+            var_combo = ttk.Combobox(batch_frame, textvariable=self.batch_vars[i], width=35, state="normal")
             var_combo.grid(row=i + 1, column=1, padx=1, pady=1)
             var_combo['values'] = self.config.get("variable_history", [])
             var_combo.bind('<<ComboboxSelected>>', lambda e, idx=i: self._on_batch_var_selected(e, idx))
@@ -267,9 +320,9 @@ class FixedModbusGUI:
 
             # 写入按钮
             write_btn = tk.Button(batch_frame, text="✎ 写入", bg="#4CAF50", fg="white",
-                                 activebackground="#45A049", activeforeground="white",
-                                 relief=tk.RAISED, bd=1, padx=10,
-                                 font=("", 9), cursor="hand2")
+                                 activebackground="#388E3C", activeforeground="white",
+                                 relief=tk.FLAT, bd=0, padx=10,
+                                 font=("", 9, "bold"), cursor="hand2")
             write_btn.grid(row=i + 1, column=5, padx=2, pady=1, ipady=2, sticky=tk.NSEW)
             write_btn.bind('<ButtonRelease-1>', lambda e, idx=i: self._single_write(idx))
 
@@ -277,21 +330,11 @@ class FixedModbusGUI:
         batch_btn_frame = ttk.Frame(batch_frame)
         batch_btn_frame.grid(row=5, column=0, columnspan=6, pady=(10, 0))
 
-        batch_read_btn = tk.Button(batch_btn_frame, text="📥 批量读取",
-                                  bg="#2196F3", fg="white",
-                                  activebackground="#1976D2", activeforeground="white",
-                                  relief=tk.RAISED, bd=1, padx=12, pady=4,
-                                  font=("", 9, "bold"), cursor="hand2")
+        batch_read_btn = _styled_btn(batch_btn_frame, "📥 批量读取", "#2196F3", "#1976D2", self._batch_read)
         batch_read_btn.pack(side=tk.LEFT, padx=5)
-        batch_read_btn.bind('<ButtonRelease-1>', lambda e: self._batch_read())
 
-        batch_clear_btn = tk.Button(batch_btn_frame, text="🗑 清空",
-                                   bg="#FF9800", fg="white",
-                                   activebackground="#F57C00", activeforeground="white",
-                                   relief=tk.RAISED, bd=1, padx=12, pady=4,
-                                   font=("", 9, "bold"), cursor="hand2")
+        batch_clear_btn = _styled_btn(batch_btn_frame, "🗑 清空", "#FF9800", "#F57C00", self._batch_clear)
         batch_clear_btn.pack(side=tk.LEFT, padx=5)
-        batch_clear_btn.bind('<ButtonRelease-1>', lambda e: self._batch_clear())
 
         # 自动读取控制
         auto_read_frame = ttk.Frame(batch_btn_frame)
@@ -306,8 +349,8 @@ class FixedModbusGUI:
 
         self.auto_read_btn = tk.Button(auto_read_frame, text="▶ 开始",
                                        bg="#4CAF50", fg="white",
-                                       activebackground="#45A049", activeforeground="white",
-                                       relief=tk.RAISED, bd=1, padx=8, pady=3,
+                                       activebackground="#388E3C", activeforeground="white",
+                                       relief=tk.FLAT, bd=0, padx=8, pady=3,
                                        font=("", 9, "bold"), cursor="hand2")
         self.auto_read_btn.pack(side=tk.LEFT, padx=5)
         self.auto_read_btn.bind('<ButtonRelease-1>', lambda e: self._toggle_auto_read())
@@ -316,21 +359,30 @@ class FixedModbusGUI:
         self._auto_read_timer = None
         self._auto_read_running = False
 
-        # 4. 结果显示区域
-        result_frame = ttk.LabelFrame(main_frame, text="结果", padding=10)
-        result_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        # ========== 4. 结果 ==========
+        result_frame = ttk.LabelFrame(main_frame, text="📋 结果", padding=(12, 8))
+        result_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
 
-        self.result_text = scrolledtext.ScrolledText(result_frame, height=20)
+        self.result_text = scrolledtext.ScrolledText(result_frame, height=20,
+                                                     font=("Consolas", 9),
+                                                     bg="#FAFAFA", fg="#212121",
+                                                     insertbackground="#212121",
+                                                     selectbackground="#BBDEFB")
         self.result_text.pack(fill=tk.BOTH, expand=True)
 
-        self.result_text.insert(tk.END, "结果将显示在这里...\n")
-        self.result_text.insert(tk.END, "="*50 + "\n")
+        self.result_text.insert(tk.END, "就绪 — 请加载 AXF 文件并连接设备\n")
+        self.result_text.insert(tk.END, "─" * 50 + "\n")
 
-        # 5. 状态栏
+        # ========== 5. 状态栏 ==========
+        status_frame = tk.Frame(main_frame, bg="#37474F", height=28)
+        status_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        status_frame.pack_propagate(False)
+
         self.status_var = tk.StringVar(value="就绪")
-        status_bar = ttk.Label(main_frame, textvariable=self.status_var,
-                              relief=tk.SUNKEN, anchor=tk.W)
-        status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        status_bar = tk.Label(status_frame, textvariable=self.status_var,
+                             bg="#37474F", fg="#ECEFF1",
+                             anchor=tk.W, font=("", 8), padx=10)
+        status_bar.pack(fill=tk.BOTH, expand=True)
 
         file_frame.columnconfigure(1, weight=1)
 
@@ -617,7 +669,7 @@ class FixedModbusGUI:
         if var_path in history:
             history.remove(var_path)
         history.insert(0, var_path)
-        self.config["variable_history"] = history[:10]
+        self.config["variable_history"] = history[:20]
         for combo in self.batch_var_combos:
             combo['values'] = self.config["variable_history"]
         self._save_config()
@@ -671,7 +723,7 @@ class FixedModbusGUI:
             self._auto_read_timer = None
         
         self._auto_read_running = False
-        self.auto_read_btn.config(text="▶ 开始", bg="#4CAF50", activebackground="#45A049")
+        self.auto_read_btn.config(text="▶ 开始", bg="#4CAF50", activebackground="#388E3C")
         self.auto_read_combo.config(state="normal")
         
         if hasattr(self, 'status_var'):
@@ -971,17 +1023,43 @@ class FixedModbusGUI:
         device_type = self.device_type_var.get()
         self.config["device_type"] = device_type
         self._save_config()
+        # 切换设备类型时，更新 SN 下拉列表
+        sn_list = self.ws_sn_history.get(device_type, [])
+        self.ws_sn_combo['values'] = sn_list
+        if sn_list:
+            self.ws_sn_var.set(sn_list[0])
         if self.modbus_client and hasattr(self.modbus_client, 'ws_client') and self.modbus_client.ws_client:
             self.modbus_client.ws_client.device_type = device_type
         self._update_status(f"设备类型: {device_type}")
+
+    def _update_sn_combo_values(self):
+        """初始化SN下拉框值"""
+        device_type = self.device_type_var.get()
+        sn_list = self.ws_sn_history.get(device_type, [])
+        self.ws_sn_combo['values'] = sn_list
+
+    def _save_sn_to_history(self, sn):
+        """保存SN到当前设备类型的历史记录（最多10条）"""
+        device_type = self.device_type_var.get()
+        if device_type not in self.ws_sn_history:
+            self.ws_sn_history[device_type] = []
+        sn_list = self.ws_sn_history[device_type]
+        if sn in sn_list:
+            sn_list.remove(sn)
+        sn_list.insert(0, sn)
+        self.ws_sn_history[device_type] = sn_list[:10]
+        self.config["ws_sn_history"] = self.ws_sn_history
+        self.config["ws_sn"] = sn
+        self.ws_sn_combo['values'] = self.ws_sn_history[device_type]
+        self._save_config()
 
     def _toggle_connection(self):
         """连接/断开连接"""
         if hasattr(self.modbus_client, 'connected') and self.modbus_client.connected:
             # 断开连接
             self.modbus_client.disconnect()
-            self.connect_btn.config(text="连接")
-            self.conn_status.config(text="未连接", foreground="red")
+            self.connect_btn.config(text="🔌 连接", bg="#2196F3")
+            self.conn_status.config(text="● 未连接", fg="#F44336")
             self._stop_auto_read()
             self._update_status("已断开连接")
         else:
@@ -997,8 +1075,8 @@ class FixedModbusGUI:
                 self.config["port"] = port
                 self.config["baudrate"] = baudrate
             elif comm_type == 'websocket':
-                self.config["ws_sn"] = self.ws_sn_var.get()
-            self._save_config()
+                self._save_sn_to_history(self.ws_sn_var.get())
+
 
             # 创建客户端
             try:
@@ -1028,8 +1106,8 @@ class FixedModbusGUI:
                 return
 
             # 连接
-            self.connect_btn.config(state=tk.DISABLED, text="连接中...")
-            self.conn_status.config(text="连接中...", foreground="orange")
+            self.connect_btn.config(state=tk.DISABLED, text="连接中...", bg="#90A4AE")
+            self.conn_status.config(text="◉ 连接中...", fg="#FF9800")
 
             def connect_thread():
                 try:
@@ -1045,8 +1123,8 @@ class FixedModbusGUI:
 
     def _connection_success(self, comm_type):
         """连接成功"""
-        self.connect_btn.config(state=tk.NORMAL, text="断开连接")
-        self.conn_status.config(text="已连接", foreground="green")
+        self.connect_btn.config(state=tk.NORMAL, text="🔌 断开", bg="#F44336")
+        self.conn_status.config(text="● 已连接", fg="#4CAF50")
         if comm_type == 'serial':
             port_full = self.port_var.get().strip()
             port_display = port_full.split(' - ')[1] if ' - ' in port_full else port_full

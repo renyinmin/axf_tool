@@ -63,6 +63,8 @@ Both call gui_fixed.main()  ← tkinter GUI, ~820 lines
 
 **GUI threading** (`gui_fixed.py`): File loading and Modbus I/O run in daemon threads. Results are posted to the main thread via a `queue.Queue` polled at 100ms intervals (`_start_queue_processor`). The packet callback (`_on_packet`) only displays WebSocket frames whose hex starts with `7F 7F 91` or `7F 7F 92`.
 
+**Auto-read timer**: Uses `root.after()` for non-blocking recurring batch reads at configurable intervals (500ms / 1S / 2S / 5S / 10S / 20S). `_toggle_auto_read()` starts/stops; `_auto_read_callback()` executes `_batch_read()` and reschedules itself. Changing the interval mid-run restarts the timer.
+
 ### modbus_tool/ (PyQt5, separate app)
 
 A standalone PyQt5 serial Modbus tool with custom frame building, radix converter, and IEEE 754 converter. Built from `main_window.ui` via `pyuic5`. Not required for the main app.
@@ -77,7 +79,14 @@ A standalone PyQt5 serial Modbus tool with custom frame building, radix converte
 - **Device offline detection**: WebSocket info responses with `content: "offline"` set `_device_offline = True`, which the GUI uses for user-facing error messages.
 - **Serial port refresh**: `_refresh_ports()` repopulates the port dropdown on demand via a "刷新" button next to the selector.
 - **Server type persistence**: The server type (测试服/欧服) is saved to `config["server"]` on change and applied to `ws_client.server_type` immediately — no reconnect needed.
-- **Batch read/write**: The batch region supports both read and an independent write button per row (`feat: 批量读写区域增加独立写入按钮`).
+- **Batch read/write**: The batch region supports both read and an independent write button per row. Each row uses a dedicated register pair:
+  - Group 1: write addr → 43507, data → 43515
+  - Group 2: write addr → 43509, data → 43517
+  - Group 3: write addr → 43511, data → 43519
+  - Group 4: write addr → 43513, data → 43521
+  - `write_memory()` accepts optional `write_addr`/`read_addr` parameters for per-group targeting.
+  - Small-type writes (int16/uint16/int8/uint8) merge new low bytes with previously-read high bytes; if never read, the GUI prompts the user to read first.
+  - A custom `_confirm_write` dialog (Toplevel) shows old→new values before committing.
 
 ## Dependencies
 

@@ -25,8 +25,8 @@ python main.py parse <file.axf> --search <variable_name>
 # CLI: read memory via Modbus serial
 python main.py read --port COM3 --address 0x20000000
 
-# Build standalone Windows EXE (entry point is main_simple.py, NOT main.py)
-pyinstaller ModbusAXFTool.spec
+# Build standalone Windows EXE (outputs to AXFTool/)
+pyinstaller ModbusAXFTool.spec --distpath AXFTool
 ```
 
 No test suite exists — testing is done manually against real hardware or WebSocket servers.

@@ -13,6 +13,24 @@ import sys
 import traceback
 import datetime
 
+APP_USER_MODEL_ID = "ModbusAXFTool.DesktopApp"
+
+
+def _resource_path(filename):
+    """Return the correct resource path in source and PyInstaller builds."""
+    base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_dir, filename)
+
+
+def _set_windows_app_id():
+    """Give Windows a stable identity so the taskbar uses the app icon."""
+    if sys.platform == 'win32':
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+        except Exception:
+            pass
+
 # 添加项目目录到路径
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -63,13 +81,9 @@ class FixedModbusGUI:
 
         # 设置窗口图标
         try:
-            import sys as _sys
-            if getattr(_sys, 'frozen', False):
-                ico_path = os.path.join(os.path.dirname(_sys.executable), 'fox.ico')
-            else:
-                ico_path = os.path.join(os.path.dirname(__file__), 'fox.ico')
+            ico_path = _resource_path('fox.ico')
             if os.path.exists(ico_path):
-                self.root.iconbitmap(ico_path)
+                self.root.iconbitmap(default=ico_path)
         except Exception:
             pass
 
@@ -1010,13 +1024,14 @@ class FixedModbusGUI:
         try:
             import serial.tools.list_ports
             ports = [f"{port.device} - {port.description}" for port in serial.tools.list_ports.comports()]
-            if not ports:
-                ports = ["COM1", "COM2", "COM3", "COM4", "COM5", "COM6"]
         except:
-            ports = ["COM1", "COM2", "COM3", "COM4", "COM5", "COM6"]
+            ports = []
         self.port_combo['values'] = ports
         if hasattr(self, 'status_var'):
-            self._update_status(f"串口列表已刷新，共 {len(ports)} 个串口")
+            if ports:
+                self._update_status(f"串口列表已刷新，共 {len(ports)} 个串口")
+            else:
+                self._update_status("未检测到串口")
 
     def _on_device_type_changed(self, event):
         """设备类型选择改变事件"""
@@ -1165,6 +1180,7 @@ def main():
         return 1
 
     try:
+        _set_windows_app_id()
         root = tk.Tk()
         app = FixedModbusGUI(root)
 

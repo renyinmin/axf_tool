@@ -439,7 +439,7 @@ class WebSocketClient:
         if response:
             print(f"[WebSocket] 返回响应数据: 长度={len(response)}, 前10字节={response[:10].hex()}")
 
-            parsed_data = self._parse_modbus_response(response)
+            parsed_data = self._parse_modbus_response(response, expected_slave_id=slave_id)
 
             if parsed_data is not None:
                 return parsed_data, response
@@ -571,7 +571,7 @@ class WebSocketClient:
             print(f"[WebSocket] 解析帧异常: {e}")
             return None
     
-    def _parse_modbus_response(self, response):
+    def _parse_modbus_response(self, response, expected_slave_id=None):
         """解析Modbus响应数据"""
         if len(response) < 5:
             print(f"[WebSocket] 响应长度不足: {len(response)}")
@@ -580,6 +580,10 @@ class WebSocketClient:
         try:
             slave_id = response[0]
             function_code = response[1]
+
+            if expected_slave_id is not None and slave_id != expected_slave_id:
+                print(f"[WebSocket] 响应从站地址不匹配: 期望{expected_slave_id}, 实际{slave_id}")
+                return None
 
             if function_code & 0x80:
                 print(f"[WebSocket] Modbus错误响应: 功能码={function_code & 0x7F}, 错误码={response[2]}")

@@ -8,6 +8,7 @@
 - 支持嵌套结构体成员地址计算
 - 支持数组索引访问
 - 通过 Modbus RTU 协议读取设备内存
+- 支持设置 Modbus 从站地址（1～247），串口和 WebSocket 模式均适用
 - **Modbus 报文调试打印** - 显示发送和接收的原始报文
 - 图形化用户界面，操作简单
 
@@ -33,7 +34,7 @@ python main.py
 
 4. 点击"获取地址"查看变量地址
 
-5. 连接 Modbus 设备后可读取变量值
+5. 设置从站地址（默认 1），连接 Modbus 设备后可读取变量值
 
 ## Modbus 报文调试
 
@@ -88,8 +89,11 @@ python main.py parse <axf文件> --list
 # 搜索特定变量
 python main.py parse <axf文件> --search g_single_invter
 
-# 读取内存
+# 读取内存（从站地址默认为1）
 python main.py read --port COM3 --address 0x20000000
+
+# 指定从站地址5
+python main.py read --port COM3 --slave-id 5 --address 0x20000000
 ```
 
 ## 支持的变量路径格式

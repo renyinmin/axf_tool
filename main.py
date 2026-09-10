@@ -83,6 +83,15 @@ def cli_mode():
     from axf_parser import AXFParser
     from modbus_client import ModbusMemoryClient, DisplayType
 
+    def slave_id_type(value):
+        try:
+            slave_id = int(value)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError("从站地址必须是整数") from exc
+        if not 1 <= slave_id <= 247:
+            raise argparse.ArgumentTypeError("从站地址必须在1～247之间")
+        return slave_id
+
     parser = argparse.ArgumentParser(description="Modbus AXF工具命令行模式")
     subparsers = parser.add_subparsers(dest='command', help='命令')
 
@@ -97,6 +106,8 @@ def cli_mode():
     read_parser.add_argument('--port', required=True, help='串口端口')
     read_parser.add_argument('--address', type=lambda x: int(x, 0), required=True, help='内存地址')
     read_parser.add_argument('--type', type=str, default='hex', help='显示类型')
+    read_parser.add_argument('--slave-id', type=slave_id_type, metavar='1-247', default=1,
+                             help='Modbus从站地址（1～247，默认1）')
 
     args = parser.parse_args()
 
@@ -125,7 +136,7 @@ def cli_mode():
                 print(f"  ... (只显示前50个)")
 
     elif args.command == 'read':
-        client = ModbusMemoryClient(port=args.port, baudrate=115200)
+        client = ModbusMemoryClient(port=args.port, baudrate=115200, slave_id=args.slave_id)
         if not client.connect():
             print(f"连接失败: {args.port}")
             return 1

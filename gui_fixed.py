@@ -129,6 +129,7 @@ class FixedModbusGUI:
             "recent_axf_files": [],
             "port": "COM3",
             "baudrate": 9600,
+            "slave_id": 1,
             "timeout": 1.0,
             "variable_history": [],
             "comm_type": "serial",
@@ -189,6 +190,17 @@ class FixedModbusGUI:
         comm_combo.pack(side=tk.LEFT, padx=5)
         comm_combo['values'] = ['serial', 'websocket']
         comm_combo.bind('<<ComboboxSelected>>', self._on_comm_type_changed)
+
+        ttk.Label(comm_type_frame, text="从站地址:").pack(side=tk.LEFT, padx=(20, 0))
+        self.slave_id_var = tk.StringVar(value=str(self.config.get("slave_id", 1)))
+        self.slave_id_spinbox = ttk.Spinbox(
+            comm_type_frame,
+            from_=1,
+            to=247,
+            textvariable=self.slave_id_var,
+            width=6
+        )
+        self.slave_id_spinbox.pack(side=tk.LEFT, padx=5)
 
         # 串口设置
         self.serial_frame = ttk.Frame(conn_frame)
@@ -1075,14 +1087,27 @@ class FixedModbusGUI:
             self.modbus_client.disconnect()
             self.connect_btn.config(text="🔌 连接", bg="#2196F3")
             self.conn_status.config(text="● 未连接", fg="#F44336")
+            self.slave_id_spinbox.config(state=tk.NORMAL)
             self._stop_auto_read()
             self._update_status("已断开连接")
         else:
             # 连接
             comm_type = self.comm_type_var.get()
 
+            try:
+                slave_id = int(self.slave_id_var.get().strip())
+            except (TypeError, ValueError):
+                messagebox.showerror("参数错误", "Modbus从站地址必须是1～247之间的整数")
+                self.slave_id_spinbox.focus_set()
+                return
+            if not 1 <= slave_id <= 247:
+                messagebox.showerror("参数错误", "Modbus从站地址必须在1～247之间")
+                self.slave_id_spinbox.focus_set()
+                return
+
             # 保存配置
             self.config["comm_type"] = comm_type
+            self.config["slave_id"] = slave_id
             if comm_type == 'serial':
                 port_full = self.port_var.get().strip()
                 port = port_full.split(' - ')[0] if ' - ' in port_full else port_full
@@ -1092,6 +1117,7 @@ class FixedModbusGUI:
             elif comm_type == 'websocket':
                 self._save_sn_to_history(self.ws_sn_var.get())
 
+            self._save_config()
 
             # 创建客户端
             try:
@@ -1101,13 +1127,15 @@ class FixedModbusGUI:
                         baudrate=baudrate,
                         timeout=float(self.config.get("timeout", 1.0)),
                         packet_callback=self._on_packet,
-                        comm_type='serial'
+                        comm_type='serial',
+                        slave_id=slave_id
                     )
                 elif comm_type == 'websocket':
                     self.modbus_client = ModbusMemoryClient(
                         comm_type='websocket',
                         timeout=float(self.config.get("timeout", 1.0)),
-                        packet_callback=self._on_packet
+                        packet_callback=self._on_packet,
+                        slave_id=slave_id
                     )
                     # 设置WebSocket连接参数（使用默认值，SN需要设置）
                     if hasattr(self.modbus_client, 'ws_client') and self.modbus_client.ws_client:
@@ -1121,6 +1149,7 @@ class FixedModbusGUI:
                 return
 
             # 连接
+            self.slave_id_spinbox.config(state=tk.DISABLED)
             self.connect_btn.config(state=tk.DISABLED, text="连接中...", bg="#90A4AE")
             self.conn_status.config(text="◉ 连接中...", fg="#FF9800")
 
@@ -1144,14 +1173,15 @@ class FixedModbusGUI:
             port_full = self.port_var.get().strip()
             port_display = port_full.split(' - ')[1] if ' - ' in port_full else port_full
             port = port_full.split(' - ')[0] if ' - ' in port_full else port_full
-            self._update_status(f"已连接到 {port}")
-            self._log_result(f"已连接到串口: {port_display}")
+            self._update_status(f"已连接到 {port}，从站地址 {self.slave_id_var.get()}")
+            self._log_result(f"已连接到串口: {port_display}，从站地址: {self.slave_id_var.get()}")
         elif comm_type == 'websocket':
-            self._update_status(f"已连接到 WebSocket 服务器")
+            self._update_status(f"已连接到 WebSocket 服务器，从站地址 {self.slave_id_var.get()}")
 
     def _connection_failed(self, error_msg):
         """连接失败"""
         self.connect_btn.config(state=tk.NORMAL, text="连接")
+        self.slave_id_spinbox.config(state=tk.NORMAL)
         self.conn_status.config(text="未连接", foreground="red")
         self._update_status(f"连接失败: {error_msg}")
         self._log_result(f"连接失败: {error_msg}")
@@ -1167,6 +1197,12 @@ class FixedModbusGUI:
         self._stop_auto_read()
         if self.modbus_client and hasattr(self.modbus_client, 'connected'):
             self.modbus_client.disconnect()
+        try:
+            slave_id = int(self.slave_id_var.get().strip())
+            if 1 <= slave_id <= 247:
+                self.config["slave_id"] = slave_id
+        except (TypeError, ValueError):
+            pass
         self._save_config()
         self.root.destroy()
 

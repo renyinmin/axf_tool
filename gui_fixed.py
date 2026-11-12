@@ -12,6 +12,7 @@ import queue
 import sys
 import traceback
 import datetime
+import collections
 
 APP_USER_MODEL_ID = "ModbusAXFTool.DesktopApp"
 
@@ -97,6 +98,21 @@ class FixedModbusGUI:
         self.axf_parser = None
         self.modbus_client = None
         self._packets = []
+
+        # 数据曲线窗口状态
+        self._curve_win = None
+        self._curve_canvas = None
+        self._curve_checks = []
+        self._curve_info_var = tk.StringVar(value="暂无数据")
+        self._curve_visible = [tk.BooleanVar(value=True) for _ in range(4)]
+        self._curve_colors = ["#2196F3", "#F44336", "#4CAF50", "#FF9800"]
+        self._curve_data = [collections.deque(maxlen=1000) for _ in range(4)]
+        self._curve_start_time = None
+        self._curve_redraw_job = None
+        self._curve_sel_t = None      # 鼠标点选的时间点（相对秒）
+        self._curve_geom = None       # 最近一次绘制的坐标映射，供点击拾取使用
+        self._curve_view = None       # None 表示自动显示全部时间范围
+        self._curve_drag = None
 
         # 消息队列（简化）
         self.message_queue = queue.Queue()
@@ -361,6 +377,9 @@ class FixedModbusGUI:
 
         batch_clear_btn = _styled_btn(batch_btn_frame, "🗑 清空", "#FF9800", "#F57C00", self._batch_clear)
         batch_clear_btn.pack(side=tk.LEFT, padx=5)
+
+        curve_btn = _styled_btn(batch_btn_frame, "📈 曲线", "#9C27B0", "#7B1FA2", self._open_curve_window)
+        curve_btn.pack(side=tk.LEFT, padx=5)
 
         # 自动读取控制
         auto_read_frame = ttk.Frame(batch_btn_frame)
@@ -642,11 +661,14 @@ class FixedModbusGUI:
     def _update_batch_value(self, idx, value):
         """更新批量读取的值"""
         self.batch_values[idx].set(str(value))
+        # 读取失败时记录断点，曲线在此处断开
+        self._record_curve_point(idx, None)
 
     def _update_batch_value_with_raw(self, idx, value, raw_value):
         """更新批量读取的值并保存原始数据"""
         self.batch_values[idx].set(str(value))
         self.batch_raw_values[idx] = raw_value
+        self._record_curve_point(idx, raw_value)
 
     def _on_type_selected(self, event, idx):
         """类型下拉框选择事件"""
@@ -783,6 +805,420 @@ class FixedModbusGUI:
         """自动读取间隔改变事件"""
         if self._auto_read_running:
             self._start_auto_read()
+
+    # ==================== 数据曲线 ====================
+
+    def _open_curve_window(self):
+        """打开/前置数据曲线窗口"""
+        if self._curve_win is not None and self._curve_win.winfo_exists():
+            self._curve_win.deiconify()
+            self._curve_win.lift()
+            self._schedule_curve_redraw()
+            return
+
+        win = tk.Toplevel(self.root)
+        self._curve_win = win
+        win.title("数据曲线")
+        win.geometry("820x520")
+        win.minsize(520, 340)
+        win.configure(bg="#FAFAFA")
+
+        # 顶部：组勾选
+        top = tk.Frame(win, bg="#FAFAFA")
+        top.pack(fill=tk.X, padx=10, pady=(10, 4))
+
+        tk.Label(top, text="显示:", bg="#FAFAFA", font=("", 9)).pack(side=tk.LEFT, padx=(0, 6))
+
+        self._curve_checks = []
+        for i in range(4):
+            chk = tk.Checkbutton(
+                top, text=f"组{i + 1}", variable=self._curve_visible[i],
+                bg="#FAFAFA", fg=self._curve_colors[i],
+                activebackground="#FAFAFA", activeforeground=self._curve_colors[i],
+                selectcolor="#FFFFFF", font=("", 9),
+                command=self._schedule_curve_redraw, cursor="hand2"
+            )
+            chk.pack(side=tk.LEFT, padx=4)
+            self._curve_checks.append(chk)
+
+        # 中部：画布
+        self._curve_canvas = tk.Canvas(win, bg="#FFFFFF", highlightthickness=1,
+                                       highlightbackground="#CFD8DC")
+        self._curve_canvas.pack(fill=tk.BOTH, expand=True, padx=10, pady=4)
+        self._curve_canvas.bind("<Configure>", lambda e: self._schedule_curve_redraw())
+        self._curve_canvas.bind("<MouseWheel>", self._on_curve_zoom)
+        self._curve_canvas.bind("<Button-1>", self._on_curve_press)
+        self._curve_canvas.bind("<B1-Motion>", self._on_curve_drag)
+        self._curve_canvas.bind("<ButtonRelease-1>", self._on_curve_release)
+        tk.Label(win, text="滚轮缩放时间轴 · 左键拖动平移 · 单击查看数值",
+                 bg="#FAFAFA", fg="#78909C", font=("", 8)).pack()
+        tk.Button(top, text="显示全部", command=self._reset_curve_view,
+                  cursor="hand2").pack(side=tk.RIGHT)
+
+        # 底部：信息 + 操作
+        bottom = tk.Frame(win, bg="#FAFAFA")
+        bottom.pack(fill=tk.X, padx=10, pady=(4, 10))
+
+        tk.Label(bottom, textvariable=self._curve_info_var, bg="#FAFAFA",
+                 fg="#546E7A", font=("", 8), anchor=tk.W).pack(side=tk.LEFT)
+
+        clear_btn = tk.Button(bottom, text="🗑 清空数据", bg="#FF9800", fg="white",
+                              activebackground="#F57C00", activeforeground="white",
+                              relief=tk.FLAT, bd=0, padx=12, pady=3,
+                              font=("", 9, "bold"), cursor="hand2",
+                              command=self._clear_curve_data)
+        clear_btn.pack(side=tk.RIGHT)
+
+        win.protocol("WM_DELETE_WINDOW", self._close_curve_window)
+        # 等布局完成后再重绘，此时 winfo_width 才有真实值
+        win.after(60, self._schedule_curve_redraw)
+
+    def _close_curve_window(self):
+        """关闭曲线窗口并清理定时器"""
+        if self._curve_redraw_job is not None:
+            self.root.after_cancel(self._curve_redraw_job)
+            self._curve_redraw_job = None
+        self._curve_canvas = None
+        self._curve_checks = []
+        self._curve_geom = None
+        self._curve_drag = None
+        if self._curve_win is not None:
+            try:
+                self._curve_win.destroy()
+            except tk.TclError:
+                pass
+            self._curve_win = None
+
+    def _clear_curve_data(self):
+        """清空曲线数据"""
+        for dq in self._curve_data:
+            dq.clear()
+        self._curve_start_time = None
+        self._curve_sel_t = None
+        self._curve_view = None
+        self._curve_drag = None
+        self._curve_info_var.set("暂无数据")
+        self._schedule_curve_redraw()
+
+    def _record_curve_point(self, idx, raw):
+        """记录一个数据点：相对时间、原始32位值、系统时间（raw 为 None 表示读取失败）"""
+        now = datetime.datetime.now()
+        if self._curve_start_time is None:
+            self._curve_start_time = now
+        t = (now - self._curve_start_time).total_seconds()
+        self._curve_data[idx].append((t, raw, now))
+        self._schedule_curve_redraw()
+
+    @staticmethod
+    def _raw_to_number(raw, display_type):
+        """把原始32位值按显示类型转换为绘图数值，返回 None 表示读取失败"""
+        if raw is None:
+            return None
+        raw &= 0xFFFFFFFF
+        if display_type == "float":
+            import struct
+            return struct.unpack('f', struct.pack('I', raw))[0]
+        if display_type == "int32":
+            return float(raw - 0x100000000) if raw >= 0x80000000 else float(raw)
+        if display_type == "int16":
+            low = raw & 0xFFFF
+            return float(low - 0x10000) if low >= 0x8000 else float(low)
+        if display_type == "uint16":
+            return float(raw & 0xFFFF)
+        if display_type == "int8":
+            low = raw & 0xFF
+            return float(low - 0x100) if low >= 0x80 else float(low)
+        if display_type == "uint8":
+            return float(raw & 0xFF)
+        return float(raw)
+
+    @staticmethod
+    def _fmt_float(v):
+        """浮点文本，不使用科学计数法"""
+        text = f"{v:.6f}".rstrip("0").rstrip(".")
+        return "0" if text in ("", "-", "-0") else text
+
+    @classmethod
+    def _fmt_by_type(cls, raw, display_type):
+        """按显示类型格式化数值文本（不使用科学计数法）"""
+        if raw is None:
+            return "读取失败"
+        raw &= 0xFFFFFFFF
+        if display_type == "float":
+            import struct
+            return cls._fmt_float(struct.unpack('f', struct.pack('I', raw))[0])
+        if display_type == "int32":
+            return str(raw - 0x100000000 if raw >= 0x80000000 else raw)
+        if display_type == "uint32":
+            return str(raw)
+        if display_type == "int16":
+            low = raw & 0xFFFF
+            return str(low - 0x10000 if low >= 0x8000 else low)
+        if display_type == "uint16":
+            return str(raw & 0xFFFF)
+        if display_type == "int8":
+            low = raw & 0xFF
+            return str(low - 0x100 if low >= 0x80 else low)
+        if display_type == "uint8":
+            return str(raw & 0xFF)
+        return f"0x{raw:08X}"
+
+    def _schedule_curve_redraw(self):
+        """合并重绘请求，避免高频读取时反复刷新"""
+        if self._curve_win is None or self._curve_redraw_job is not None:
+            return
+        self._curve_redraw_job = self.root.after(100, self._do_curve_redraw)
+
+    def _do_curve_redraw(self):
+        self._curve_redraw_job = None
+        self._redraw_curve()
+
+    def _fmt_axis_tick(self, v):
+        """纵轴刻度文本：可见曲线全为 hex 类型时显示 hex，其余按类型显示十进制"""
+        types = {self.batch_types[i].get() for i in range(4)
+                 if self._curve_visible[i].get() and self._curve_data[i]}
+        if types == {"hex"}:
+            return f"0x{int(round(v)) & 0xFFFFFFFF:08X}"
+        if not types or "float" in types:
+            return self._fmt_float(v)
+        return str(int(round(v)))
+
+    def _redraw_curve(self):
+        """绘制曲线"""
+        canvas = self._curve_canvas
+        if canvas is None or self._curve_win is None:
+            return
+
+        canvas.delete("all")
+        w = canvas.winfo_width()
+        h = canvas.winfo_height()
+        if w <= 1 or h <= 1:
+            return
+
+        # 勾选框上同步显示变量名
+        for i, chk in enumerate(self._curve_checks):
+            name = self.batch_vars[i].get().strip()
+            if len(name) > 18:
+                name = "…" + name[-17:]
+            chk.config(text=f"组{i + 1} {name}" if name else f"组{i + 1}")
+
+        ml, mr, mt, mb = 66, 14, 16, 30
+        x0, y0, x1, y1 = ml, mt, w - mr, h - mb
+        if x1 - x0 < 20 or y1 - y0 < 20:
+            return
+
+        canvas.create_rectangle(x0, y0, x1, y1, outline="#B0BEC5")
+
+        series = [(i, self.batch_types[i].get(), list(self._curve_data[i]))
+                  for i in range(4)
+                  if self._curve_visible[i].get() and self._curve_data[i]]
+        values = []
+        for _, dtype, pts in series:
+            for p in pts:
+                n = self._raw_to_number(p[1], dtype)
+                if n is not None:
+                    values.append(n)
+
+        if not series or not values:
+            self._curve_geom = None
+            canvas.create_text((x0 + x1) // 2, (y0 + y1) // 2,
+                               text="暂无数据 — 请先「批量读取」或开启「自动读取」",
+                               fill="#90A4AE", font=("", 10))
+            self._curve_info_var.set("暂无数据")
+            return
+
+        t_min = min(pts[0][0] for _, _, pts in series)
+        t_max = max(pts[-1][0] for _, _, pts in series)
+        if t_max - t_min < 1e-6:
+            t_max = t_min + 1.0
+        data_min, data_max = t_min, t_max
+        if self._curve_view is not None:
+            t_min, t_max = self._clamp_curve_view(*self._curve_view, data_min, data_max)
+            self._curve_view = (t_min, t_max)
+
+        y_min, y_max = min(values), max(values)
+        pad = abs(y_max) * 0.1 if y_max == y_min else (y_max - y_min) * 0.1
+        if pad <= 0:
+            pad = 1.0
+        y_min -= pad
+        y_max += pad
+
+        def to_px(t, v):
+            px = x0 + (t - t_min) / (t_max - t_min) * (x1 - x0)
+            py = y1 - (v - y_min) / (y_max - y_min) * (y1 - y0)
+            return px, py
+
+        # 横向网格 + 纵轴刻度
+        for k in range(5):
+            v = y_min + (y_max - y_min) * k / 4
+            py = y1 - (v - y_min) / (y_max - y_min) * (y1 - y0)
+            canvas.create_line(x0, py, x1, py, fill="#ECEFF1")
+            canvas.create_text(x0 - 6, py, text=self._fmt_axis_tick(v), anchor=tk.E,
+                               fill="#607D8B", font=("Consolas", 8))
+
+        # 纵向网格 + 横轴刻度（距首个数据点的秒数）
+        for k in range(5):
+            t = t_min + (t_max - t_min) * k / 4
+            px = x0 + (t - t_min) / (t_max - t_min) * (x1 - x0)
+            canvas.create_line(px, y0, px, y1, fill="#F5F5F5")
+            precision = 1 if t_max - t_min >= 1 else (3 if t_max - t_min >= 0.01 else 5)
+            canvas.create_text(px, y1 + 6, text=f"{t:.{precision}f}", anchor=tk.N,
+                               fill="#607D8B", font=("Consolas", 8))
+
+        canvas.create_text((x0 + x1) // 2, h - 6, text="时间 (s)", fill="#78909C", font=("", 8))
+
+        # 折线
+        latest = []
+        for i, dtype, pts in series:
+            color = self._curve_colors[i]
+            previous = None
+            for t, raw, _ in pts:
+                v = self._raw_to_number(raw, dtype)
+                if v is None:
+                    previous = None
+                    continue
+                if previous is not None:
+                    pt, pv = previous
+                    # 裁剪到时间窗口，保留跨越窗口边界的线段。
+                    if t > pt and t >= t_min and pt <= t_max:
+                        left, right = max(pt, t_min), min(t, t_max)
+                        lv = pv + (v - pv) * (left - pt) / (t - pt)
+                        rv = pv + (v - pv) * (right - pt) / (t - pt)
+                        canvas.create_line(*to_px(left, lv), *to_px(right, rv),
+                                           fill=color, width=2)
+                if t_min <= t <= t_max:
+                    px, py = to_px(t, v)
+                    canvas.create_oval(px - 2, py - 2, px + 2, py + 2,
+                                       fill=color, outline="")
+                previous = (t, v)
+
+            last = next((p[1] for p in reversed(pts) if p[1] is not None), None)
+            if last is not None:
+                latest.append(f"组{i + 1}={self._fmt_by_type(last, dtype)}")
+
+        # 记录坐标映射，供鼠标点击拾取
+        self._curve_geom = {"x0": x0, "x1": x1, "y0": y0, "y1": y1,
+                            "t_min": t_min, "t_max": t_max,
+                            "data_min": data_min, "data_max": data_max}
+
+        # 鼠标点选的时间点：十字线 + 数值提示 + 系统时间
+        visible_series = [(i, dtype, [p for p in pts if t_min <= p[0] <= t_max])
+                          for i, dtype, pts in series]
+        visible_points = [p for _, _, pts in visible_series for p in pts]
+        if (self._curve_sel_t is not None and t_min <= self._curve_sel_t <= t_max
+                and visible_points):
+            snap = min(visible_points,
+                       key=lambda p: abs(p[0] - self._curve_sel_t))
+            sx = to_px(snap[0], 0)[0]
+            canvas.create_line(sx, y0, sx, y1, fill="#78909C", dash=(4, 3))
+
+            rows = []
+            for i, dtype, pts in visible_series:
+                if not pts:
+                    continue
+                point = min(pts, key=lambda p: abs(p[0] - self._curve_sel_t))
+                v = self._raw_to_number(point[1], dtype)
+                if v is None:
+                    continue
+                px, py = to_px(point[0], v)
+                canvas.create_oval(px - 3, py - 3, px + 3, py + 3,
+                                   fill=self._curve_colors[i], outline="#FFFFFF")
+                rows.append((self._curve_colors[i],
+                             f"组{i + 1}  {self._fmt_by_type(point[1], dtype)}"))
+
+            self._draw_curve_tooltip(canvas, sx, y0, x1, rows)
+            self._curve_info_var.set(
+                f"系统时间 {snap[2].strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}   |   "
+                + "   ".join(text for _, text in rows))
+        else:
+            self._curve_info_var.set("   ".join(latest) + f"   （{t_min:.1f}~{t_max:.1f}s）")
+
+    def _draw_curve_tooltip(self, canvas, anchor_x, y0, x1, rows):
+        """在点选位置旁绘制数值提示框"""
+        if not rows:
+            return
+        pad, line_h = 6, 17
+        box_w = max(len(text) for _, text in rows) * 7 + pad * 2
+        box_h = pad * 2 + line_h * len(rows)
+
+        bx = anchor_x + 14
+        if bx + box_w > x1:
+            bx = anchor_x - 14 - box_w
+        bx = max(bx, 4)
+
+        canvas.create_rectangle(bx, y0 + 10, bx + box_w, y0 + 10 + box_h,
+                                fill="#FFFFFF", outline="#B0BEC5")
+        for k, (color, text) in enumerate(rows):
+            canvas.create_text(bx + pad, y0 + 10 + pad + line_h * k, text=text,
+                               anchor=tk.NW, fill=color, font=("Consolas", 9))
+
+    @staticmethod
+    def _clamp_curve_view(start, end, data_min, data_max):
+        span = min(max(end - start, min(0.001, data_max - data_min)),
+                   data_max - data_min)
+        start = max(data_min, min(start, data_max - span))
+        return start, start + span
+
+    def _reset_curve_view(self):
+        self._curve_view = None
+        self._curve_drag = None
+        self._curve_sel_t = None
+        self._redraw_curve()
+
+    def _on_curve_zoom(self, event):
+        geom = self._curve_geom
+        if not geom or not event.delta or not (geom['x0'] <= event.x <= geom['x1']):
+            return
+        ratio = (event.x - geom['x0']) / (geom['x1'] - geom['x0'])
+        span = geom['t_max'] - geom['t_min']
+        anchor = geom['t_min'] + ratio * span
+        factor = 0.8 ** max(-10, min(10, event.delta / 120))
+        new_span = max(0.001, min(span * factor, geom['data_max'] - geom['data_min']))
+        self._curve_view = self._clamp_curve_view(
+            anchor - ratio * new_span, anchor + (1 - ratio) * new_span,
+            geom['data_min'], geom['data_max'])
+        self._curve_drag = None
+        self._redraw_curve()
+        return 'break'
+
+    def _on_curve_press(self, event):
+        geom = self._curve_geom
+        self._curve_drag = None
+        if geom and geom['x0'] <= event.x <= geom['x1'] and geom['y0'] <= event.y <= geom['y1']:
+            self._curve_drag = (event.x, dict(geom), False)
+
+    def _on_curve_drag(self, event):
+        if self._curve_drag is None:
+            return
+        start_x, geom, moved = self._curve_drag
+        if not moved and abs(event.x - start_x) < 4:
+            return
+        shift = (start_x - event.x) * (geom['t_max'] - geom['t_min']) / (geom['x1'] - geom['x0'])
+        self._curve_view = self._clamp_curve_view(
+            geom['t_min'] + shift, geom['t_max'] + shift,
+            geom['data_min'], geom['data_max'])
+        self._curve_drag = (start_x, geom, True)
+        self._redraw_curve()
+
+    def _on_curve_release(self, event):
+        drag = self._curve_drag
+        self._curve_drag = None
+        if drag is None or not drag[2]:
+            self._on_curve_click(event)
+
+    def _on_curve_click(self, event):
+        """点击图表，显示该时间点的数值与系统时间"""
+        geom = self._curve_geom
+        if not geom:
+            return
+        if not (geom["x0"] <= event.x <= geom["x1"] and geom["y0"] <= event.y <= geom["y1"]):
+            if self._curve_sel_t is not None:
+                self._curve_sel_t = None
+                self._redraw_curve()
+            return
+        ratio = (event.x - geom["x0"]) / (geom["x1"] - geom["x0"])
+        self._curve_sel_t = geom["t_min"] + ratio * (geom["t_max"] - geom["t_min"])
+        self._redraw_curve()
 
     def _parse_display_value(self, value_str: str, display_type: str):
         """将用户输入的文本值解析为Python int/float"""
@@ -1195,6 +1631,7 @@ class FixedModbusGUI:
     def on_closing(self):
         """窗口关闭事件"""
         self._stop_auto_read()
+        self._close_curve_window()
         if self.modbus_client and hasattr(self.modbus_client, 'connected'):
             self.modbus_client.disconnect()
         try:
